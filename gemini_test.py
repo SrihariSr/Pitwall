@@ -1,6 +1,6 @@
 """
 First Gemini API call
-Sanity check that the key, SDK, and connection all work.
+Check that the key, SDK, and connection all work.
 """
 import os
 from dotenv import load_dotenv
