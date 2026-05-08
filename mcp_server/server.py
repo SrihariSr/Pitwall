@@ -1,10 +1,11 @@
 """
-Pitwall MCP Server — Phase 1, Session 2: first real F1 tool.
-
 Exposes get_session_state, which returns a high-level snapshot of an
 F1 session at a given lap. Designed for replay mode: we operate on
 historical sessions and pretend we're at a chosen lap.
 """
+from pydantic import type_adapter
+from pydantic import type_adapter
+from lib2to3.pgen2 import driver
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -13,7 +14,7 @@ from mcp.server.fastmcp import FastMCP
 import pandas as pd
 
 from mcp_server.sessions import load_session
-from mcp_server.schemas import SessionState, DriverLapHistory, LapRecord
+from mcp_server.schemas import SessionState, DriverLapHistory, LapRecord, DriverStints, StintRecord
 
 mcp = FastMCP("pitwall")
 
@@ -42,7 +43,7 @@ def get_session_state(
     should make to know where they are in the race.
 
     Parameters:
-        year: Championship year, e.g. 2022
+        year: Race year, e.g. 2022
         event: Event name like "Monaco" or "Hungarian Grand Prix"
         session_type: "R" for race, "Q" for qualifying, "FP1"/"FP2"/"FP3", "S" for sprint
         current_lap: Lap number to evaluate state at. Must be >= 1.
@@ -114,10 +115,10 @@ def get_driver_lap_history(
     excluded from the response.
 
     Parameters:
-        year: Championship year, e.g. 2022
+        year: Race year, e.g. 2022
         event: Event name like "Monaco" or round number as string
         session_type: "R", "Q", "FP1", "FP2", "FP3", "S"
-        driver_code: 3-letter driver code, e.g. "LEC", "VER"
+        driver_code: 3-letter driver code, e.g. "PIA", "LEC"
         current_lap: Truncate history at this lap (inclusive). Must be >= 1.
     """
     session = load_session(year, event, session_type)
@@ -175,7 +176,85 @@ def _timedelta_to_seconds(value) -> float | None:
         return None
     return float(value.total_seconds())
 
+@mcp.tool()
+def get_tyre_stints(
+    year: int,
+    event: str,
+    session_type: str,
+    driver_code: str,
+    current_lap: int,
+) -> DriverStints:
+    """
+    Return the stint history of one driver upto the current lap
 
+    Each stint represents a continuous run of laps on one set of tyres.
+    Use this when you need a stint-level view rather than per-lap detail —
+    for example, to ask 'what compound is this driver on?', 'how old are
+    their current tyres?', 'how did their last stint pace compare to their
+    rivals' equivalent stints?'.
+
+    The driver's current (ongoing) stint is included with is_ongoing=True
+    and end_lap set to current_lap. The stint's true end is unknown until
+    the driver pits.
+
+    Parameters:
+        year: Race year, e.g. 2022
+        event: Event name like "Monaco" or a round number as a string
+        session_type: "R", "Q", "FP1", "FP2", "FP3", "S"
+        driver_code: 3-letter driver code, e.g. "PIA", "LEC"
+        current_lap: Lap to truncate at (inclusive), must be >= 1
+    """
+    session = load_session(year, event, session_type)
+
+    driver_laps = session.laps.pick_drivers(driver_code)
+    driver_laps = driver_laps[driver_laps["LapNumber"] <= current_lap]
+    driver_laps = driver_laps[driver_laps["LapTime"].notna()]
+
+    if len(driver_laps) == 0:
+        raise ValueError(f"No lap data for {driver_code} the {year} {event} {session_type} upto lap {current_lap}")
+    
+    team = str(driver_laps.iloc[0]["Team"])
+
+    # Gets the highest stint number a driver has reached by current_lap
+    max_stint = int(driver_laps["Stint"].max())
+
+    stints: list[StintRecord] = []
+    for stint_number in range(1, max_stint + 1):
+        stint_laps = driver_laps[driver_laps["Stint"] == stint_number]
+        if len(stint_laps) == 0:
+            continue
+
+        start_lap = int(stint_laps["LapNumber"].min())
+        end_lap = int(stint_laps["LapNumber"].max())
+
+        compound = str(stint_laps["Compound"].iloc[0]) if pd.notna(stint_laps["Compound"].iloc[0]) else "UNKNOWN"
+
+        lap_times_seconds = [t.total_seconds() for t in stint_laps["LapTime"] if pd.notna(t)]
+        avg_lap = float(sum(lap_times_seconds) / len(lap_times_seconds)) if lap_times_seconds else None
+        best_lap = float(min(lap_times_seconds)) if lap_times_seconds else None
+        last_row = stint_laps.iloc[-1]
+        pitted_on_last_lap = pd.notna(last_row["PitInTime"])
+        is_ongoing = (stint_number == max_stint) and (not pitted_on_last_lap)
+
+        stints.append(StintRecord(
+            stint_number=stint_number,
+            compound=compound,
+            start_lap=start_lap,
+            end_lap=end_lap,
+            laps_completed=len(stint_laps),
+            is_ongoing=is_ongoing,
+            average_lap_time_seconds=avg_lap,
+            best_lap_time_seconds=best_lap,
+        ))
+
+    
+    return DriverStints(
+        driver_code=driver_code,
+        team=team,
+        total_stints=len(stints),
+        current_stint_number=max_stint,
+        stints=stints,
+    )
 
 
 

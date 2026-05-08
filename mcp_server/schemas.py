@@ -42,3 +42,25 @@ class DriverLapHistory(BaseModel):
     team: str = Field(description="Team name, e.g. 'Ferrari'")
     laps_completed: int = Field(description="Number of laps in this response")
     laps: list[LapRecord] = Field(description="Per-lap records in order from lap 1 to current_lap")
+
+class StintRecord(BaseModel):
+    """One stint for one driver: a continuous run of laps on one set of tyres."""
+
+    stint_number: int = Field(description="1-indexed stint number for this driver. Stint 1 is from race start to first pit.")
+    compound: str = Field(description="Tyre compound used: SOFT, MEDIUM, HARD, INTERMEDIATE, WET")
+    start_lap: int = Field(description="Lap number this stint started on (out-lap, or lap 1 for the opening stint)")
+    end_lap: int = Field(description="Lap number this stint ended on (in-lap, or current_lap for the ongoing stint)")
+    laps_completed: int = Field(description="Number of timed laps in this stint within current_lap window")
+    is_ongoing: bool = Field(description="True if this is the driver's current stint (no pit stop has ended it within current_lap)")
+    average_lap_time_seconds: float | None = Field(description="Mean lap time across the stint, in seconds. None if no timed laps.")
+    best_lap_time_seconds: float | None = Field(description="Fastest lap time in the stint, in seconds. None if no timed laps.")
+
+
+class DriverStints(BaseModel):
+    """All stints for one driver, up to current_lap."""
+
+    driver_code: str = Field(description="3-letter driver code, e.g. 'LEC'")
+    team: str = Field(description="Team name, e.g. 'Ferrari'")
+    total_stints: int = Field(description="Number of stints in this response")
+    current_stint_number: int = Field(description="Stint number the driver is currently on at current_lap")
+    stints: list[StintRecord] = Field(description="Stints in chronological order, from race start to current stint")
