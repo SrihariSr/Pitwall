@@ -64,3 +64,37 @@ class DriverStints(BaseModel):
     total_stints: int = Field(description="Number of stints in this response")
     current_stint_number: int = Field(description="Stint number the driver is currently on at current_lap")
     stints: list[StintRecord] = Field(description="Stints in chronological order, from race start to current stint")
+
+class RivalGap(BaseModel):
+    """Gap from the focal driver to one rival, at a specific lap."""
+
+    rival_driver_code: str = Field(description="3-letter code of the rival driver")
+    rival_team: str = Field(description="Rival's team name")
+    rival_position: int = Field(description="Rival's track position at this lap")
+    gap_seconds: float | None = Field(
+        description=(
+            "Time gap in seconds. Positive means the rival is AHEAD on track "
+            "(focal driver crossed the line that many seconds later). Negative "
+            "means the rival is behind. None if rivals are on different laps."
+        )
+    )
+    same_lap: bool = Field(description="True if focal driver and rival are on the same lap")
+
+class GapsSnapshot(BaseModel):
+    """Full gap picture for one focal driver at one lap."""
+
+    focal_driver_code: str = Field(description="The driver these gaps are computed from")
+    focal_position: int = Field(description="Focal driver's track position at this lap")
+    current_lap: int = Field(description="The lap these gaps are evaluated at")
+    gap_ahead_seconds: float | None = Field(
+        description="Gap to the car directly ahead, in seconds. None if leading."
+    )
+    gap_behind_seconds: float | None = Field(
+        description="Gap to the car directly behind, in seconds. None if last."
+    )
+    gap_to_leader_seconds: float = Field(
+        description="Gap to the race leader, in seconds. 0.0 if focal driver IS the leader."
+    )
+    rivals: list[RivalGap] = Field(
+        description="Signed gaps to every other classified driver in the race, sorted by track position"
+    )

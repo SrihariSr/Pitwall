@@ -14,7 +14,7 @@ from mcp.server.fastmcp import FastMCP
 import pandas as pd
 
 from mcp_server.sessions import load_session
-from mcp_server.schemas import SessionState, DriverLapHistory, LapRecord, DriverStints, StintRecord
+from mcp_server.schemas import SessionState, DriverLapHistory, LapRecord, DriverStints, StintRecord, RivalGap, GapsSnapshot 
 
 mcp = FastMCP("pitwall")
 
@@ -256,6 +256,89 @@ def get_tyre_stints(
         stints=stints,
     )
 
+def _get_lap_end_times(session, lap_number: int) -> dict[str, dict]:
+    """
+    Return a mapping of driver_code -> {time_seconds, position, team, lap_number}
+    for every driver who has data at the given lap.
+
+    time_seconds is the cumulative race time (seconds from session start) when
+    the driver crossed the line completing lap_number.
+
+    Drivers on a different lap (lapped down) are returned with their actual most
+    recent lap_number, so the caller can detect lap mismatches.
+    """
+
+    laps = session.laps
+    result: dict[str, dict] = {}
+
+    for driver_code in laps["Driver"].unique():
+        driver_laps = laps[laps["Driver"] == driver_code]
+        driver_laps = laps[laps["LapNumber"] <= lap_number]
+        if len(driver_laps) == 0:
+            continue
+
+        latest = driver_laps.sort_values("LapNumber").iloc[-1]
+        if pd.isna(latest["Time"]):
+            continue
+        
+        result[str(driver_code)] = {
+            "time_seconds": float(latest["Time"].total_seconds()),
+            "position": int(latest["Position"]) if pd.notna(latest["Position"]) else 99,
+            "team": str(latest["Team"]),
+            "lap_number": int(latest["LapNumber"]),
+        }
+    
+    return result
+
+
+@mcp.tool()
+def get_laps_to_rivals( # NEED TO FINISH LATER
+    year: int,
+    event: str,
+    session_type: str,
+    driver_code: str,
+    current_lap: int,
+) -> GapsSnapshot:
+    """
+    Return time gaps from one focal driver to every other driver at a chosen lap.
+
+    Use this to evaluate strategic position: who is in undercut range, who is
+    threatening from behind, how far back from the leader is the focal driver.
+    Sign convention: positive gap means the rival is ahead on track (focal
+    driver crossed the line that many seconds later). Negative means behind.
+    Lapped drivers appear with gap_seconds=None.
+
+    Parameters:
+        year: Race year, e.g. 2022
+        event: Event name like "Monaco" or round number as string
+        session_type: "R", "Q", "FP1", "FP2", "FP3", "S"
+        driver_code: 3-letter focal driver code, e.g. "LEC"
+        current_lap: Lap to evaluate gaps at. Must be >= 1.
+    """
+    session = load_session(year, event, session_type)
+
+    times_by_driver = _get_lap_end_times(session, current_lap)
+
+    if driver_code not in times_by_driver:
+        raise ValueError(f"Driver {driver_code} has no data at lap {current_lap} in {year} {event} {session_type}. Check the code and lap range!")
+
+        focal = times_by_driver[driver_code]
+        focal_lap = focal["lap_number"]
+        focal_time = focal["time_seconds"]
+        focal_position = focal["position"]
+
+        rivals: list[RivalGap] = []
+        
+        for code, info in times_by_driver.items():
+            if code == driver_code:
+                continue
+            same_lap = info["lap_number"] == focal_lap
+
+            if same_lap:
+                gap_seconds = focal_time - info["time_seconds"]
+            else:
+                gap_seconds = None
+            # --------------------------- NEED TO CONTINUE FROM HERE ------------------------------------------------
 
 
 if __name__ == "__main__":
