@@ -98,3 +98,31 @@ class GapsSnapshot(BaseModel):
     rivals: list[RivalGap] = Field(
         description="Signed gaps to every other classified driver in the race, sorted by track position"
     )
+
+class WeatherSample(BaseModel):
+    """One weather observation at one timestamp."""
+
+    seconds_into_session: float = Field(description="Time elapsed from session start to this observation (in seconds)")
+    air_temp_celsius: float = Field(description="Air temperature in degrees Celsius")
+    track_temp_celsius: float = Field(description="Track surface temperature in degrees Celsius (typically higher than air temp)")
+    humidity_percent: float = Field(description="Relative humidity, 0-100")
+    is_raining: bool = Field(description="True if rainfall was detected at this observation. Note: this is a boolean indicator; intensity is not available publicly.")
+    wind_speed_ms: float = Field(description="Wind speed in metres per second")
+
+
+class WeatherSnapshot(BaseModel):
+    """Weather at a chosen lap, with a short recent-history trend."""
+
+    current_lap: int = Field(description="The lap this snapshot is evaluated at")
+    seconds_into_session: float = Field(description="Time elapsed from session start to current_lap completion, in seconds")
+    air_temp_celsius: float = Field(description="Current air temperature in Celsius")
+    track_temp_celsius: float = Field(description="Current track temperature in Celsius")
+    humidity_percent: float = Field(description="Current relative humidity, 0-100")
+    is_raining: bool = Field(description="True if rain is currently falling")
+    wind_speed_ms: float = Field(description="Current wind speed in metres per second")
+
+    track_temp_trend: str = Field(description="Trend of track temperature over recent samples: 'rising', 'falling', or 'stable'")
+    rain_trend: str = Field(description="Trend of rainfall: 'starting' (was dry, now raining), 'stopping' (was wet, now dry), 'ongoing-wet', 'ongoing-dry'")
+
+    recent_samples: list[WeatherSample] = Field(description="Recent weather observations in chronological order, up to and including the current sample")
+    
