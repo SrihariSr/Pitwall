@@ -3,9 +3,6 @@ Exposes get_session_state, which returns a high-level snapshot of an
 F1 session at a given lap. Designed for replay mode: we operate on
 historical sessions and pretend we're at a chosen lap.
 """
-from pydantic import type_adapter
-from pydantic import type_adapter
-from lib2to3.pgen2 import driver
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -14,7 +11,7 @@ from mcp.server.fastmcp import FastMCP
 import pandas as pd
 
 from mcp_server.sessions import load_session
-from mcp_server.schemas import SessionState, DriverLapHistory, LapRecord, DriverStints, StintRecord, RivalGap, GapsSnapshot, RivalGap, WeatherSnapshot, WeatherSample
+from mcp_server.schemas import SessionState, DriverLapHistory, LapRecord, DriverStints, StintRecord, RivalGap, GapsSnapshot, WeatherSnapshot, WeatherSample, SafetyCarRate
 
 mcp = FastMCP("pitwall")
 
@@ -292,7 +289,7 @@ def _get_lap_end_times(session, lap_number: int) -> dict[str, dict]:
 
 
 @mcp.tool()
-def get_laps_to_rivals(
+def get_gaps_to_rivals(
     year: int,
     event: str,
     session_type: str,
@@ -487,14 +484,130 @@ def get_weather(
         recent_samples=recent_samples,
     )    
 
+from functools import lru_cache
 
 
+def _find_safety_car_laps(session) -> tuple[set[int], set[int]]:
+    """
+    Inspect one session and return (sc_laps, vsc_laps).
+
+    Each is a set of lap numbers during which the respective condition was
+    active. TrackStatus codes per FastF1: '4' = SC, '6'/'7' = Virtual Safety Car deployed/ending.
+    A multi-flag string like '46' means both were active that lap.
+    """
+    sc_laps: set[int] = set()
+    vsc_laps: set[int] = set()
+
+    for _, row in session.laps.iterrows():
+        if pd.isna(row["LapNumber"]) or pd.isna(row["TrackStatus"]):
+            continue
+        status = str(row["TrackStatus"])
+        lap = int(row["LapNumber"])
+        if "4" in status:
+            sc_laps.add(lap)
+        if "6" in status or "7" in status:
+            vsc_laps.add(lap)
+
+    return sc_laps, vsc_laps
 
 
+@lru_cache(maxsize=32)
+def _historical_sc_data(event: str, years_tuple: tuple[int, ...]) -> tuple:
+    """
+    Load and aggregate Safety Car/Virtual Safety Car data for one circuit across multiple years.
+
+    Cached by (event, years_tuple): the first call loads N sessions, subsequent calls return instantly.
+
+    Returns a tuple of (year, total_laps, sc_laps_frozenset, vsc_laps_frozenset)
+    for each year that loaded successfully. Years missing or with errors are skipped.
+    """
+    out = []
+    for year in years_tuple:
+        try:
+            session = load_session(year, event, "R")
+            total_laps = int(session.laps["LapNumber"].max())
+            sc_laps, vsc_laps = _find_safety_car_laps(session)
+            out.append((year, total_laps, frozenset(sc_laps), frozenset(vsc_laps)))
+        except Exception:
+            continue  # Race may not have existed that year. Skip and continue.
+    return tuple(out)
+
+@mcp.tool()
+def historical_sc_rate(
+    event: str,
+    lap_from: int,
+    lap_to: int,
+    years_back: int = 8
+) -> SafetyCarRate:
+    """
+    Estimate the historical probability of a safety car or Virtual Safety Car at this circuit
+    within a chosen lap window, based on past races at the same venue.
+
+    This is a coarse statistical prior, not a real-time prediction. Treat it as
+    base-rate information to combine with current race context (incidents,
+    weather, driver behaviour). Sample size is small (~8 races per circuit
+    in the reliable FastF1 era from 2018 onward), so rates are noisy estimates.
+
+    Parameters:
+        event: Event name like "Monaco" or "British Grand Prix"
+        lap_from: Start of the lap window (inclusive, >= 1)
+        lap_to: End of the lap window (inclusive, >= lap_from)
+        years_back: How many years of history to consider. Default 8 (full reliable era).
+    """
 
 
+    if lap_from < 1 or lap_to < lap_from:
+        raise ValueError(f"Invalid lap window: {lap_from}..{lap_to}")
 
+    # Build year range. End on the last completed season; start years_back behind that.
+    end_year = 2025  # last full season as of project start
+    start_year = max(2018, end_year - years_back + 1)
+    years = tuple(range(start_year, end_year + 1))
 
+    historical = _historical_sc_data(event, years)
+
+    if len(historical) == 0:
+        raise ValueError(
+            f"No historical data loaded for event '{event}'. Check spelling! FastF1 expects names like 'Monaco' or 'British Grand Prix'."
+        )
+
+    races_with_sc = 0
+    races_with_vsc = 0
+    races_with_either = 0
+
+    for (_year, total_laps, sc_laps, vsc_laps) in historical:
+        # If the window starts beyond this race's length, skip it; the window is irrelevant for shorter historical editions of the race.
+        if lap_from > total_laps:
+            continue
+
+        has_sc = any(lap_from <= L <= lap_to for L in sc_laps)
+        has_vsc = any(lap_from <= L <= lap_to for L in vsc_laps)
+
+        if has_sc:
+            races_with_sc += 1
+        if has_vsc:
+            races_with_vsc += 1
+        if has_sc or has_vsc:
+            races_with_either += 1
+
+    n = len(historical)
+    warning = None
+    if n < 5:
+        warning = f"Only {n} historical races available; rate estimates are noisy with this small sample size."
+    
+    return SafetyCarRate(
+        event=event,
+        lap_window_from=lap_from,
+        lap_window_to=lap_to,
+        races_analyzed=n,
+        races_with_sc_in_window=races_with_sc,
+        races_with_vsc_in_window=races_with_vsc,
+        races_with_either_in_window=races_with_either,
+        sc_probability=races_with_sc / n,
+        vsc_probability=races_with_vsc / n,
+        combined_probability=races_with_either / n,
+        sample_size_warning=warning,
+    )
 
 if __name__ == "__main__":
     mcp.run()

@@ -125,4 +125,18 @@ class WeatherSnapshot(BaseModel):
     rain_trend: str = Field(description="Trend of rainfall: 'starting' (was dry, now raining), 'stopping' (was wet, now dry), 'ongoing-wet', 'ongoing-dry'")
 
     recent_samples: list[WeatherSample] = Field(description="Recent weather observations in chronological order, up to and including the current sample")
-    
+
+class SafetyCarRate(BaseModel):
+    """Historical safety car/Virtual Safety Car rate at one circuit, for a chosen lap window."""
+
+    event: str = Field(description="Event/circuit name as queried")
+    lap_window_from: int = Field(description="Start of the lap window (inclusive)")
+    lap_window_to: int = Field(description="End of the lap window (inclusive)")
+    races_analyzed: int = Field(description="Number of historical races used in this estimate")
+    races_with_sc_in_window: int = Field(description="Of those, how many had a full safety car within the window")
+    races_with_vsc_in_window: int = Field(description="Of those, how many had a VSC within the window")
+    races_with_either_in_window: int = Field(description="Of those, how many had SC OR VSC within the window")
+    sc_probability: float = Field(description="Estimated probability (0-1) of a full safety car within the window")
+    vsc_probability: float = Field(description="Estimated probability (0-1) of a VSC within the window")
+    combined_probability: float = Field(description="Estimated probability (0-1) of either SC or VSC within the window")
+    sample_size_warning: str | None = Field(description="Warning if sample size is small (n < 5). None if adequate.")
