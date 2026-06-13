@@ -36,4 +36,19 @@ class EventBus:
                 yield event
         finally:
             self._subscribers.remove((queue, type_filter))
+    
+    def subscribe_queue(
+        self,
+        event_types: list[str] | None = None,
+    ) -> asyncio.Queue:
+        """
+        Register a subscription synchronously and return the queue.
+
+        Unlike subscribe(), this registers the subscription immediately
+        rather than waiting for an `async for` to begin.
+        """
+        queue: asyncio.Queue = asyncio.Queue(maxsize=self._max_queue_size)
+        type_filter = set(event_types) if event_types is not None else None
+        self._subscribers.append((queue, type_filter))
+        return queue
             
