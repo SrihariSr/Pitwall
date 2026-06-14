@@ -13,6 +13,10 @@ from google import genai
 from google.genai import types as genai_types
 from pydantic import BaseModel, ValidationError
 
+_RATE_LIMIT_INTERVAL_SECONDS = 4.5
+_rate_limit_lock = asyncio.Lock()
+_last_call_time: float = 0.0
+
 load_dotenv()
 
 T = TypeVar("T", bound=BaseModel)
@@ -46,36 +50,42 @@ class LLMClient:
         
         self._client = genai.Client(api_key=key)
     
-
     async def _call_with_retry(
-        self,
-        model: str,
-        user_prompt: str,
-        config: genai_types.GenerateContentConfig
-    ) -> str:
-        """
-        Makes the API call with one retry in the event of a network failure.
-        """
-        last_error: Exception | None = None
-
-        for attempt in range(2):
-            try:
-                response = await asyncio.to_thread(
-                    self._client.models.generate_content,
-                    model=model,
-                    contents=user_prompt,
-                    config=config
-                )
-                if not response.text:
-                    raise LLMSchemaError("Model has returned an empty response :(")
-                return response.text
-            
-            except Exception as e:
-                latest_error = e
-                if attempt == 0:
-                    await asyncio.sleep(2.0) # Pausing for 2 seconds before retrying
-                    continue
-                raise LLMNetworkError(f"LLM call failed after attempt {e}")
+            self,
+            model: str,
+            user_prompt: str,
+            config: genai_types.GenerateContentConfig,
+        ) -> str:
+            """Make the API call with one retry on network failure, respecting rate limit."""
+            global _last_call_time
+    
+            last_error: Exception | None = None
+            for attempt in range(2):
+                # Enforce inter-call spacing to stay under free-tier limits.
+                async with _rate_limit_lock:
+                    elapsed = asyncio.get_event_loop().time() - _last_call_time
+                    if elapsed < _RATE_LIMIT_INTERVAL_SECONDS:
+                        await asyncio.sleep(_RATE_LIMIT_INTERVAL_SECONDS - elapsed)
+                    _last_call_time = asyncio.get_event_loop().time()
+    
+                try:
+                    response = await asyncio.to_thread(
+                        self._client.models.generate_content,
+                        model=model,
+                        contents=user_prompt,
+                        config=config,
+                    )
+                    if not response.text:
+                        raise LLMSchemaError("Model returned empty response")
+                    return response.text
+                except Exception as e:
+                    last_error = e
+                    if attempt == 0:
+                        await asyncio.sleep(1.0)
+                        continue
+                    raise LLMNetworkError(f"LLM call failed after retry: {e}") from e
+    
+            raise LLMNetworkError(f"Unexpected retry exit: {last_error}")
 
     async def generate_structured(
     self,
