@@ -6,12 +6,26 @@ historical sessions and pretend we're at a chosen lap.
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from mcp.server.fastmcp import FastMCP
 import pandas as pd
-
+from mcp_server.live_state import get_active_state
 from mcp_server.sessions import load_session
-from mcp_server.schemas import SessionState, DriverLapHistory, LapRecord, DriverStints, StintRecord, RivalGap, GapsSnapshot, WeatherSnapshot, WeatherSample, SafetyCarRate
+from mcp_server.schemas import (
+    SessionState,
+    DriverLapHistory,
+    LapRecord,
+    DriverStints,
+    StintRecord,
+    RivalGap,
+    GapsSnapshot,
+    WeatherSnapshot,
+    WeatherSample,
+    SafetyCarRate,
+    LiveRaceState,
+    LiveDriverStatus,
+    LivePitStop,
+    RecentPitActivity,    
+    )
 
 mcp = FastMCP("pitwall")
 
@@ -607,6 +621,104 @@ def historical_sc_rate(
         vsc_probability=races_with_vsc / n,
         combined_probability=races_with_either / n,
         sample_size_warning=warning,
+    )
+
+
+@mcp.tool()
+def get_current_race_state() -> LiveRaceState:
+    """
+    Return a snapshot of the live race at the current simulated moment.
+
+    Reads from in-memory RaceState that's being updated by the event bus.
+    Use this when you need orientation in the live race: what lap, what
+    status, what weather, who's leading right now. Constant-time read,
+    no FastF1 calls.
+
+    Raises RuntimeError if no live state is active (replay or live feed not started).
+    """
+    state = get_active_state()
+    if state is None:
+        raise RuntimeError(
+            "No live RaceState is active. Start a replay or live feed first."
+        )
+
+    leader = next(iter(state.all_drivers()), None)
+    weather = state.latest_weather()
+
+    return LiveRaceState(
+        current_lap=state.current_lap(),
+        track_status=state.track_status(),
+        seconds_into_session=state.seconds_into_session(),
+        is_safety_car_active=state.is_safety_car_active(),
+        leader_driver_code=leader.driver_code if leader else None,
+        air_temp_celsius=weather.air_temp_celsius if weather else None,
+        track_temp_celsius=weather.track_temp_celsius if weather else None,
+        is_raining=weather.is_raining if weather else None,
+    )
+
+
+@mcp.tool()
+def get_live_driver_status(driver_code: str) -> LiveDriverStatus:
+    """
+    Return the live snapshot for one driver.
+
+    Includes their current lap, track position, most recent lap time,
+    and total pit stops so far. For deeper historical detail use
+    get_driver_lap_history.
+
+    Parameter:
+        driver_code: 3-letter driver code, e.g. "LEC"
+    """
+    state = get_active_state()
+    if state is None:
+        raise RuntimeError("No live RaceState is active.")
+
+    driver = state.driver(driver_code)
+    if driver is None:
+        raise ValueError(
+            f"No live data for driver {driver_code} yet. "
+            f"They may not have completed a lap in this session."
+        )
+
+    return LiveDriverStatus(
+        driver_code=driver.driver_code,
+        current_lap=driver.current_lap,
+        position=driver.position,
+        last_lap_time_seconds=driver.last_lap_time_seconds,
+        pit_stop_count=driver.pit_stop_count,
+    )
+
+
+@mcp.tool()
+def get_recent_pit_activity(last_n_laps: int = 5) -> RecentPitActivity:
+    """
+    Return pit stops that occurred within the last N laps.
+
+    Use this when reasoning about strategic momentum: has there been
+    a wave of stops, is the field reshuffling, did a rival just pit.
+
+    Parameter:
+        last_n_laps: Window size in laps. Default 5.
+    """
+    state = get_active_state()
+    if state is None:
+        raise RuntimeError("No live RaceState is active.")
+
+    pits = state.recent_pits(last_n_laps=last_n_laps)
+
+    return RecentPitActivity(
+        last_n_laps=last_n_laps,
+        current_lap=state.current_lap(),
+        pit_count=len(pits),
+        pits=[
+            LivePitStop(
+                driver_code=p.driver_code,
+                in_lap=p.in_lap,
+                compound_from=p.compound_from,
+                seconds_into_session=p.seconds_into_session,
+            )
+            for p in pits
+        ],
     )
 
 if __name__ == "__main__":

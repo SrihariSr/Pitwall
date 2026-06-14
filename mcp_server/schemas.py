@@ -140,3 +140,52 @@ class SafetyCarRate(BaseModel):
     vsc_probability: float = Field(description="Estimated probability (0-1) of a VSC within the window")
     combined_probability: float = Field(description="Estimated probability (0-1) of either SC or VSC within the window")
     sample_size_warning: str | None = Field(description="Warning if sample size is small (n < 5). None if adequate.")
+
+
+class LiveRaceState(BaseModel):
+    """
+    Snapshot of the live race at the current simulated moment.
+    """
+
+    current_lap: int = Field(description="Highest lap number reached by any driver")
+    track_status: str = Field(description="Current track status: 'green', 'yellow', 'sc', 'vsc', 'red'")
+    seconds_into_session: float = Field(description="Simulated time elapsed from session start, in seconds")
+    is_safety_car_active: bool = Field(description="True if SC or VSC is currently deployed")
+    leader_driver_code: str | None = Field(description="3-letter code of the current leader. None if unknown.")
+    air_temp_celsius: float | None = Field(description="Latest air temperature reading. None if no weather data yet.")
+    track_temp_celsius: float | None = Field(description="Latest track temperature reading. None if no weather data yet.")
+    is_raining: bool | None = Field(description="Whether rain is currently falling. None if no weather data yet.")
+
+
+class LiveDriverStatus(BaseModel):
+    """
+    Per-driver live snapshot.
+    """
+
+    driver_code: str = Field(description="3-letter driver code")
+    current_lap: int = Field(description="Last lap this driver completed")
+    position: int | None = Field(description="Current track position. None if unknown.")
+    last_lap_time_seconds: float | None = Field(description="Most recent lap time. None if not yet recorded.")
+    pit_stop_count: int = Field(description="Total pit stops this driver has made")
+
+
+class LivePitStop(BaseModel):
+    """
+    A pit stop event surfaced from recent activity.
+    """
+
+    driver_code: str = Field(description="3-letter driver code")
+    in_lap: int = Field(description="Lap on which the driver pitted")
+    compound_from: str | None = Field(description="Compound coming off. None if unknown.")
+    seconds_into_session: float = Field(description="Simulated time of the pit entry")
+
+
+class RecentPitActivity(BaseModel):
+    """
+    Pit stops within a recent lap window.
+    """
+
+    last_n_laps: int = Field(description="The lap window queried, e.g. 5 = last 5 laps")
+    current_lap: int = Field(description="Current race lap at the time of the query")
+    pit_count: int = Field(description="Number of pit stops in the window")
+    pits: list[LivePitStop] = Field(description="Per-stop details, most recent last")
