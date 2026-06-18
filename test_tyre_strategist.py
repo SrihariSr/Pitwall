@@ -1,6 +1,8 @@
 """
-Watch Monaco 2022 with three subagents running per lap:
-Tyre Strategist, Gap Analyst, Monte Carlo simulator.
+Watch Monaco 2022 with Tyre Strategist AND Gap Analyst running each lap.
+
+Two subagents running concurrently via asyncio.gather. This is the pattern
+the orchestrator will use to consult all 7 specialists at once.
 """
 import asyncio
 
@@ -12,7 +14,6 @@ from mcp_server.server import get_current_race_state
 from llm.client import LLMClient
 from agents.tyre_strategist import assess_tyres
 from agents.gap_analyst import assess_gaps
-from agents.monte_carlo import assess_monte_carlo
 
 
 async def subagent_loop(
@@ -23,6 +24,7 @@ async def subagent_loop(
     event: str = "Monaco",
     session_type: str = "R",
 ):
+    """Each new lap, run Tyre Strategist and Gap Analyst concurrently."""
     seen_laps = set()
     while True:
         await asyncio.sleep(1.0)
@@ -35,31 +37,34 @@ async def subagent_loop(
             continue
         seen_laps.add(race.current_lap)
 
+        # Two LLM calls in parallel. Note: the rate limiter inside LLMClient
+        # serialises them anyway (5/min limit), but the asyncio.gather
+        # structure is correct for when we move to paid tier or more subagents.
         try:
-            tyre, gap, mc = await asyncio.gather(
+            tyre, gap = await asyncio.gather(
                 assess_tyres(client, driver_code, year, event, session_type),
                 assess_gaps(client, driver_code, year, event, session_type),
-                assess_monte_carlo(client, driver_code, year, event, session_type),
             )
         except Exception as e:
             print(f"[L{race.current_lap}] SUBAGENT ERROR: {e}")
             continue
 
-        print(f"\n---------------- LAP {race.current_lap} ----------------")
-        print(f"  Track: {race.track_status}")
+        print(f"\n------------- LAP {race.current_lap} -------------")
+        print(f"Track status: {race.track_status}  |  {driver_code} P{tyre and gap.focal_position}")
 
         if tyre.has_sufficient_data:
-            print(f"TYRE   cliff L{tyre.cliff_lap}  conf {tyre.confidence:.2f}")
+            print(f"🛞 TYRE   cliff L{tyre.cliff_lap}  conf {tyre.confidence:.2f}")
         else:
-            print(f"TYRE   (insufficient data)")
+            print(f"🛞 TYRE   (insufficient data, conf {tyre.confidence:.2f})")
         print(f"{tyre.reasoning}")
 
-        print(f"GAP   undercut={gap.undercut_threat}  overcut={gap.overcut_opportunity}")
+        print(f"⏱️ GAP   undercut={gap.undercut_threat}  overcut={gap.overcut_opportunity}  conf {gap.confidence:.2f}")
         print(f"{gap.reasoning}")
-
-        print(f"MONTE CARLO    BOX_NOW podium {mc.box_now.p_podium*100:.0f}%  |  STAY_OUT podium {mc.stay_out.p_podium*100:.0f}%")
-        print(f"{mc.interpretation}")
-        print("\n\n\n")
+        if gap.closest_rivals:
+            print(f"rivals: " + ", ".join(
+                f"{r.driver_code}({r.gap_seconds:+.1f}s,{r.relationship})"
+                for r in gap.closest_rivals
+            ))
 
 
 async def main():
@@ -81,9 +86,9 @@ async def main():
         year=2022,
         event="Monaco",
         session_type="R",
-        speed=2.0,
+        speed=3.0,            # very slow — two LLM calls per lap on free tier
         start_lap=15,
-        end_lap=20,   # narrower window to stay efficient
+        end_lap=22,
     )
 
     await asyncio.sleep(3.0)

@@ -95,7 +95,7 @@ async def assess_tyres(
     year: int,
     event: str,
     session_type: str,
-    model: str = "gemini-2.5-flash-lite"
+    model: str = "gemini-2.5-flash"
     ) -> TyreAssessment:
     """
     Run the Tyre Strategist on the focal driver's current stint.
