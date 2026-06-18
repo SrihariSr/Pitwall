@@ -53,7 +53,7 @@ async def assess_gaps(
     year: int,
     event: str,
     session_type: str,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-2.5-flash-lite",
 ) -> GapAssessment:
     """
     Run the Gap Analyst on the focal driver.

@@ -162,7 +162,7 @@ async def assess_monte_carlo(
     year: int,
     event: str,
     session_type: str,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-2.5-flash-lite",
     new_compound: str = "MEDIUM",
 ) -> MonteCarloAssessment:
     """
