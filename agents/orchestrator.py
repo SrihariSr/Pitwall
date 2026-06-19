@@ -18,12 +18,16 @@ from agents.schemas import (
     TyreAssessment,
     GapAssessment,
     MonteCarloAssessment,
-    SafetyCarAssessment
+    SafetyCarAssessment,
+    WeatherAssessment,
+    RivalAssessment
 )
 from agents.tyre_strategist import assess_tyres
 from agents.gap_analyst import assess_gaps
 from agents.monte_carlo import assess_monte_carlo
 from agents.sc_oracle import assess_safety_car
+from agents.weather_watcher import assess_weather
+from agents.rival_modeler import assess_rivals
 
 ORCHESTRATOR_MODEL = os.getenv("LLM_MODEL_ORCHESTRATOR", "gemini-2.5-flash")
 
@@ -32,7 +36,7 @@ _DECISIONS_PATH = Path("decisions/decisions.jsonl")
 SYSTEM_PROMPT = """
 You are the Chief Strategist on an F1 team's pit wall.
 
-Your job: take the structured outputs of specialist engineers (Tyre Strategist, Gap Analyst, Monte Carlo simulator, Safety Car Oracle) and decide the team's strategic call. You do not have access to raw data, only the specialists' assessments. Trust them where they're confident, downweight them where they're not.
+Your job: take the structured outputs of specialist engineers (Tyre Strategist, Gap Analyst, Monte Carlo simulator, Safety Car Oracle, Weather Watcher, Rival Modeler) and decide the team's strategic call. You do not have access to raw data, only the specialists' assessments. Trust them where they're confident, downweight them where they're not.
 
 The call vocabulary:
 - BOX_THIS_LAP: pit on the lap that's just ending. Used when the decision is unambiguous and we need to act now.
@@ -43,12 +47,16 @@ The call vocabulary:
 - MONITOR: no actionable change since the last cycle. Used when subagent outputs are stable and uneventful.
 
 How to weigh inputs:
-- If Tyre Strategist says insufficient_data, ignore its cliff_lap and rely on Gap, Monte Carlo, and Safety Car Oracle
+- If Tyre Strategist says insufficient_data, ignore its cliff_lap and rely on Gap, Monte Carlo, Safety Car Oracle, Weather Watcher, and Rival Modeler
 - If Monte Carlo's box_now and stay_out distributions differ by >10pp on podium probability, that's a meaningful signal
 - If Gap Analyst flags a high undercut threat AND tyres are within 3 laps of cliff, that converges toward BOX
-- If Safety Car Oracle reports adjusted_probability > 0.3 AND tyres are healthy (cliff >5 laps out), consider EXTEND or MONITOR - wait for the potential cheap stop
-- If Safety Car Oracle direction is "elevated" alongside an undercut threat, the calculus leans earlier — a bunched field after a SC reshuffles everything
+- If Safety Car Oracle reports adjusted_probability > 0.3 AND tyres are healthy (cliff >5 laps out), consider EXTEND or MONITOR, wait for the potential cheap stop
+- If Safety Car Oracle direction is "elevated" alongside an undercut threat, the calculus leans earlier, a bunched field after a SC reshuffles everything
 - If track is under SC or VSC, the pit-stop loss is roughly halved: favours pitting in borderline cases
+- If Weather Watcher reports pivot_urgency "immediate" and the implied current compound doesn't match optimal_compound, that converges toward BOX regardless of other signals
+- If Weather Watcher reports a "drying" or "wetting" condition with "soon" urgency, expect a compound pivot in the next few cycles: factor it into stint planning
+- If Rival Modeler reports threat_window "now" for an undercut rival (matched by driver_code with Gap Analyst) AND tyres are within 3 laps of cliff, that strongly converges toward BOX
+- If Rival Modeler predicts the rival AHEAD pits later than us with high confidence, that opens an overcut window, consider EXTEND if tyre life allows
 - If you're the leader with no immediate threat and healthy tyres, default to MONITOR
 
 Biases:
@@ -67,6 +75,8 @@ def _build_fusion_prompt(
     gap: GapAssessment,
     mc: MonteCarloAssessment,
     sc: SafetyCarAssessment,
+    weather: WeatherAssessment,
+    rivals: RivalAssessment,
     trigger: str
 ) -> str:
     """
@@ -115,6 +125,27 @@ def _build_fusion_prompt(
         f"reasoning: {sc.reasoning}"
     )
 
+    weather_block = (
+    f"current_condition: {weather.current_condition}\n"
+    f"optimal_compound: {weather.optimal_compound}\n"
+    f"pivot_urgency: {weather.pivot_urgency}\n"
+    f"confidence: {weather.confidence:.2f}\n"
+    f"reasoning: {weather.reasoning}"
+    )
+
+    rivals_block_lines = []
+    for r in rivals.rivals:
+        rivals_block_lines.append(
+            f"{r.driver_code}: {r.current_compound} on stint {r.current_stint_age} laps, "
+            f"predicted pit L{r.predicted_pit_lap} (threat {r.threat_window})"
+        )
+    rivals_block = (
+    f"primary_threat: {rivals.primary_threat_driver}\n"
+    + "\n".join(rivals_block_lines) + "\n"
+    f"confidence: {rivals.confidence:.2f}\n"
+    f"reasoning: {rivals.reasoning}"
+    )
+
     return f"""
 Focal driver: {driver_code} at lap {current_lap}.
 Track status: {race.track_status}. Weather: {"raining" if race.is_raining else "dry"}, {race.track_temp_celsius}°C track temp.
@@ -132,6 +163,12 @@ Trigger that woke the orchestrator: {trigger}.
 ----------- SAFETY CAR ORACLE -----------
 {sc_block}
 
+----------- WEATHER WATCHER -----------
+{weather_block}
+
+----------- RIVAL MODELER -----------
+{weather_block}
+
 Fuse these inputs into a PitDecision. Pick one of the six call categories, name your primary reason, list supporting factors, and name 1-3 risks."""
 
 def _log_decision(
@@ -141,7 +178,9 @@ def _log_decision(
     tyre: TyreAssessment,
     gap: GapAssessment,
     mc: MonteCarloAssessment,
-    sc: SafetyCarAssessment
+    sc: SafetyCarAssessment,
+    weather: WeatherAssessment,
+    rivals: RivalAssessment
 ) -> None:
     """
     Append one line to decisions.jsonl for post-race audit.
@@ -161,7 +200,9 @@ def _log_decision(
             "tyre": tyre.model_dump(),
             "gap": gap.model_dump(),
             "monte_carlo": mc.model_dump(),
-            "safety_car": sc.model_dump()
+            "safety_car": sc.model_dump(),
+            "weather": weather.model_dump(),
+            "rivals": rivals.model_dump()
         },
     }
 
@@ -188,11 +229,13 @@ async def decide(
     race = get_current_race_state()
 
     # Consulting subagents in parallel
-    tyre, gap, monte_carlo, safety_car = await asyncio.gather(
+    tyre, gap, monte_carlo, safety_car, weather, rivals = await asyncio.gather(
         assess_tyres(client, driver_code, year, event, session_type),
         assess_gaps(client, driver_code, year, event, session_type),
         assess_monte_carlo(client, driver_code, year, event, session_type),
-        assess_safety_car(client, year, event, session_type)  
+        assess_safety_car(client, year, event, session_type),
+        assess_weather(client, year, event, session_type),
+        assess_rivals(client, driver_code, year, event, session_type)
     )
 
     user_prompt = _build_fusion_prompt(
@@ -203,6 +246,8 @@ async def decide(
         gap,
         monte_carlo,
         safety_car,
+        weather,
+        rivals,
         trigger
         )
     
@@ -216,6 +261,6 @@ async def decide(
 
     decision.trigger = trigger
 
-    _log_decision(driver_code, current_lap, decision, tyre, gap, monte_carlo, safety_car)
+    _log_decision(driver_code, current_lap, decision, tyre, gap, monte_carlo, safety_car, weather, rivals)
 
     return decision

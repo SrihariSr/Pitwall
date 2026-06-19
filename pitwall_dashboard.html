@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pitwall · Strategy</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-body:         #14161a;
+  --bg-card:         #1d2026;
+  --bg-cell:         #17191e;
+  --border-subtle:   #2a2e36;
+  --border-medium:   #393e48;
+
+  --text-primary:    #d8dde4;
+  --text-secondary:  #8b929d;
+  --text-muted:      #5b6271;
+  --text-disabled:   #3a4048;
+
+  --ok:              #4caf6a;
+  --warn:            #d4a13a;
+  --crit:            #d44a5a;
+  --info:            #6797b8;
+  --alt:             #8474b0;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg-body);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.dash {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ─── HEADER STATUS BAR ────────────────────────────────── */
+.header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 24px;
+  padding: 10px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+}
+
+.logo {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: var(--text-primary);
+}
+.logo .v {
+  color: var(--text-muted);
+  margin-left: 8px;
+  font-weight: 400;
+}
+
+.race-info {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+}
+.race-info > div { display: flex; align-items: baseline; gap: 8px; }
+.race-info .lbl {
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.race-info .val { color: var(--text-primary); font-weight: 500; }
+
+.live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ─── MAIN GRID ────────────────────────────────────────── */
+.main { display: grid; grid-template-columns: 380px 1fr; gap: 12px; }
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  padding: 14px 16px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.card-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.card-conf {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+}
+.card-conf strong { color: var(--text-primary); font-weight: 500; margin-left: 4px; }
+
+/* ─── DECISION CARD ────────────────────────────────────── */
+.decision {
+  border-top: 2px solid var(--warn);
+  transition: border-top-color 0.4s;
+}
+
+.decision-call {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--warn);
+  line-height: 1.2;
+  margin: 8px 0 4px;
+  transition: color 0.4s;
+}
+
+.decision-trigger {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.conf-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.conf-track { flex: 1; height: 3px; background: var(--bg-cell); overflow: hidden; }
+.conf-fill {
+  height: 100%;
+  background: var(--warn);
+  width: 0;
+  transition: width 0.5s, background 0.4s;
+}
+.conf-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text-primary);
+  font-weight: 500;
+  min-width: 30px;
+}
+
+.decision-section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-subtle); }
+
+.section-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.section-body { font-size: 12px; line-height: 1.55; color: var(--text-primary); }
+
+.bullet { position: relative; padding-left: 14px; margin: 4px 0; color: var(--text-primary); }
+.bullet::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 8px;
+  width: 4px;
+  height: 1px;
+  background: var(--text-muted);
+}
+
+/* ─── SPECIALIST GRID ──────────────────────────────────── */
+.specialists {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.specialist { padding: 12px 14px; }
+
+.metric-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 8px 0; }
+.metric { display: flex; flex-direction: column; gap: 3px; }
+
+.metric-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.metric-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 19px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.metric-value.warn { color: var(--warn); }
+.metric-value.crit { color: var(--crit); }
+.metric-value.ok { color: var(--ok); }
+
+.reasoning {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  min-height: 30px;
+}
+
+/* ─── CAR / TYRE PANEL ─────────────────────────────────── */
+.car-tyre { grid-column: span 2; }
+
+.car-layout {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 32px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.car-metrics { display: flex; flex-direction: column; gap: 16px; }
+.car-metrics.left { align-items: flex-end; }
+.car-metrics.left .metric { align-items: flex-end; }
+
+.car-svg {
+  width: 96px;
+  height: auto;
+}
+
+.car-tyre-shape { transition: stroke 0.4s; }
+
+/* ─── GAUGE ────────────────────────────────────────────── */
+.gauge { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; }
+.gauge-bar { flex: 1; height: 4px; background: var(--bg-cell); position: relative; }
+.gauge-fill {
+  height: 100%;
+  background: var(--text-secondary);
+  width: 0;
+  transition: width 0.5s, background 0.4s;
+}
+.gauge-marker {
+  position: absolute;
+  top: -2px;
+  width: 1px;
+  height: 8px;
+  background: var(--text-primary);
+  transition: left 0.5s;
+}
+
+/* ─── RIVAL LIST (GAP PANEL) ───────────────────────────── */
+.rivals { font-family: 'JetBrains Mono', monospace; font-size: 11px; margin-top: 6px; min-height: 50px; }
+.rival-row {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--bg-cell);
+}
+.rival-code { color: var(--text-primary); font-weight: 500; }
+.rival-threat { color: var(--text-muted); font-size: 9px; letter-spacing: 1px; align-self: center; }
+
+/* ─── MC BARS ──────────────────────────────────────────── */
+.mc-bars { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.mc-bar {
+  display: grid;
+  grid-template-columns: 56px 1fr 36px;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+.mc-bar-label { color: var(--text-muted); letter-spacing: 1px; font-weight: 500; font-size: 9px; text-transform: uppercase; }
+.mc-bar-track { height: 4px; background: var(--bg-cell); }
+.mc-bar-fill { height: 100%; width: 0; transition: width 0.5s; }
+.mc-bar-fill.box { background: var(--warn); }
+.mc-bar-fill.stay { background: var(--info); }
+.mc-bar-val { color: var(--text-primary); text-align: right; font-weight: 500; }
+
+/* ─── WEATHER STRIP ────────────────────────────────────── */
+.weather-strip { display: flex; flex-direction: column; gap: 12px; margin: 4px 0 8px; }
+.weather-row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: baseline;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--bg-cell);
+}
+.weather-row .lbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+.weather-row .val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* ─── RIVAL MODELER PANEL ──────────────────────────────── */
+.rival-panel { grid-column: span 2; }
+
+.rival-primary {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  align-items: baseline;
+  gap: 14px;
+  padding: 6px 0 10px;
+}
+.rival-primary .lbl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+.rival-primary .val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  color: var(--crit);
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.rival-table {
+  display: grid;
+  grid-template-columns: 60px 1fr 1fr 1fr 1fr;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+
+.rival-table-head {
+  display: contents;
+}
+.rival-table-head > span {
+  padding: 6px 10px;
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 500;
+  background: var(--bg-cell);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.rival-data-row {
+  display: contents;
+}
+.rival-data-row > span {
+  padding: 7px 10px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--bg-cell);
+}
+
+.threat-now { color: var(--crit); font-weight: 600; }
+.threat-soon { color: var(--warn); font-weight: 500; }
+.threat-later { color: var(--text-secondary); }
+
+/* ─── TIMELINE ─────────────────────────────────────────── */
+.timeline { padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border-subtle); }
+.timeline-track {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.timeline-item {
+  padding: 8px 10px;
+  background: var(--bg-cell);
+  border-top: 1px solid var(--border-subtle);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.timeline-item.box { border-top-color: var(--warn); }
+.timeline-item.extend { border-top-color: var(--info); }
+.timeline-item.stay { border-top-color: var(--ok); }
+.timeline-item.window { border-top-color: var(--alt); }
+.timeline-item.monitor { border-top-color: var(--text-muted); }
+.timeline-item.current {
+  background: #21252d;
+}
+
+.timeline-lap { color: var(--text-muted); font-size: 9px; letter-spacing: 1px; margin-bottom: 4px; text-transform: uppercase; font-weight: 500; }
+.timeline-call { color: var(--text-primary); font-weight: 600; font-size: 12px; letter-spacing: 0.5px; }
+.timeline-call.box-text { color: var(--warn); }
+.timeline-call.extend-text { color: var(--info); }
+.timeline-call.stay-text { color: var(--ok); }
+.timeline-call.window-text { color: var(--alt); }
+.timeline-call.monitor-text { color: var(--text-secondary); }
+.timeline-conf { color: var(--text-muted); font-size: 10px; margin-top: 3px; letter-spacing: 0.5px; }
+.timeline-reason {
+  color: var(--text-secondary);
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  margin-top: 5px;
+  line-height: 1.4;
+}
+
+/* ─── PLACEHOLDERS ─────────────────────────────────────── */
+.waiting {
+  text-align: center;
+  padding: 30px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  grid-column: 1 / -1;
+}
+</style>
+</head>
+<body>
+
+<div class="dash">
+
+  <header class="header">
+    <div class="logo">PITWALL<span class="v"></span></div>
+    <div class="race-info">
+      <div><span class="lbl">Event</span><span class="val" id="race-event">—</span></div>
+      <div><span class="lbl">Lap</span><span class="val" id="race-lap">—</span></div>
+      <div><span class="lbl">Driver</span><span class="val" id="race-driver">—</span></div>
+      <div><span class="lbl">Pos</span><span class="val" id="race-position">—</span></div>
+    </div>
+    <div class="live">
+      <span class="live-dot" id="conn-indicator"></span><span id="conn-text">Connecting</span>
+    </div>
+  </header>
+
+  <div class="main">
+
+    <!-- Decision card -->
+    <div class="card decision" id="decision-card">
+      <div class="card-header">
+        <span class="card-title">Chief Strategist</span>
+        <span class="card-conf">Cycle<strong id="decision-cycle">—</strong></span>
+      </div>
+
+      <div class="decision-call" id="decision-call">—</div>
+      <div class="decision-trigger" id="decision-trigger">Waiting for first decision</div>
+
+      <div class="conf-row">
+        <div class="conf-track"><div class="conf-fill" id="decision-conf-fill"></div></div>
+        <div class="conf-val" id="decision-conf-val">—</div>
+      </div>
+
+      <div class="decision-section">
+        <div class="section-label">Primary reason</div>
+        <div class="section-body" id="decision-primary">—</div>
+      </div>
+
+      <div class="decision-section">
+        <div class="section-label">Supporting</div>
+        <div class="section-body" id="decision-supporting"></div>
+      </div>
+
+      <div class="decision-section">
+        <div class="section-label">Risks</div>
+        <div class="section-body" id="decision-risks"></div>
+      </div>
+    </div>
+
+    <div class="specialists">
+
+      <!-- Tyre + Car (span 2) -->
+      <div class="card specialist car-tyre">
+        <div class="card-header">
+          <span class="card-title">Tyre Strategist · Car</span>
+          <span class="card-conf">Conf<strong id="tyre-conf-val">—</strong></span>
+        </div>
+        <div class="car-layout">
+
+          <div class="car-metrics left">
+            <div class="metric">
+              <span class="metric-label">Status</span>
+              <span class="metric-value" id="tyre-status" style="font-size: 16px;">—</span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Compound</span>
+              <span class="metric-value" id="tyre-compound" style="font-size: 18px;">—</span>
+            </div>
+          </div>
+
+          <svg class="car-svg" viewBox="0 0 200 540" xmlns="http://www.w3.org/2000/svg">
+            <rect x="20" y="6" width="160" height="12" rx="1" fill="none" stroke="var(--border-medium)" stroke-width="1.2"/>
+            <line x1="50" y1="6" x2="50" y2="18" stroke="var(--border-medium)" stroke-width="0.6"/>
+            <line x1="100" y1="6" x2="100" y2="18" stroke="var(--border-medium)" stroke-width="0.6"/>
+            <line x1="150" y1="6" x2="150" y2="18" stroke="var(--border-medium)" stroke-width="0.6"/>
+            <path d="M 88 18 L 112 18 L 108 70 L 92 70 Z" fill="none" stroke="var(--border-medium)" stroke-width="1.2"/>
+            <rect class="car-tyre-shape" id="tyre-fl" x="10" y="74" width="22" height="50" rx="2" fill="var(--bg-cell)" stroke="var(--ok)" stroke-width="1.8"/>
+            <rect class="car-tyre-shape" id="tyre-fr" x="168" y="74" width="22" height="50" rx="2" fill="var(--bg-cell)" stroke="var(--ok)" stroke-width="1.8"/>
+            <path d="M 60 70 L 140 70 L 140 350 L 130 380 L 70 380 L 60 350 Z" fill="none" stroke="var(--border-medium)" stroke-width="1.2"/>
+            <ellipse cx="100" cy="160" rx="16" ry="28" fill="none" stroke="var(--border-medium)" stroke-width="1"/>
+            <line x1="84" y1="180" x2="86" y2="200" stroke="var(--border-medium)" stroke-width="0.6"/>
+            <line x1="116" y1="180" x2="114" y2="200" stroke="var(--border-medium)" stroke-width="0.6"/>
+            <path d="M 60 230 L 50 280 L 60 320" fill="none" stroke="var(--border-medium)" stroke-width="1"/>
+            <path d="M 140 230 L 150 280 L 140 320" fill="none" stroke="var(--border-medium)" stroke-width="1"/>
+            <rect class="car-tyre-shape" id="tyre-rl" x="6" y="380" width="26" height="60" rx="2" fill="var(--bg-cell)" stroke="var(--ok)" stroke-width="1.8"/>
+            <rect class="car-tyre-shape" id="tyre-rr" x="168" y="380" width="26" height="60" rx="2" fill="var(--bg-cell)" stroke="var(--ok)" stroke-width="1.8"/>
+            <rect x="78" y="380" width="44" height="80" rx="2" fill="none" stroke="var(--border-medium)" stroke-width="1"/>
+            <line x1="100" y1="450" x2="100" y2="480" stroke="var(--border-medium)" stroke-width="1.2"/>
+            <rect x="50" y="480" width="100" height="14" rx="1" fill="none" stroke="var(--border-medium)" stroke-width="1.2"/>
+            <line x1="80" y1="480" x2="80" y2="494" stroke="var(--border-medium)" stroke-width="0.6"/>
+            <line x1="120" y1="480" x2="120" y2="494" stroke="var(--border-medium)" stroke-width="0.6"/>
+            <circle id="compound-badge" cx="100" cy="270" r="13" fill="var(--bg-cell)" stroke="var(--info)" stroke-width="1.2"/>
+            <text id="compound-letter" x="100" y="275" text-anchor="middle" fill="var(--info)" font-family="JetBrains Mono, monospace" font-size="12" font-weight="600">—</text>
+          </svg>
+
+          <div class="car-metrics right">
+            <div class="metric">
+              <span class="metric-label">Cliff lap</span>
+              <span class="metric-value warn" id="tyre-cliff" style="font-size: 18px;">—</span>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Laps to cliff</span>
+              <span class="metric-value" id="tyre-laps-to-cliff" style="font-size: 18px;">—</span>
+            </div>
+          </div>
+
+        </div>
+        <div class="reasoning" id="tyre-reasoning">—</div>
+      </div>
+
+      <!-- Gap Analyst -->
+      <div class="card specialist">
+        <div class="card-header">
+          <span class="card-title">Gap Analyst</span>
+          <span class="card-conf">Conf<strong id="gap-conf-val">—</strong></span>
+        </div>
+        <div class="metric-row">
+          <div class="metric">
+            <span class="metric-label">Undercut</span>
+            <span class="metric-value" id="gap-undercut">—</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Overcut</span>
+            <span class="metric-value" id="gap-overcut">—</span>
+          </div>
+        </div>
+        <div class="rivals" id="gap-rivals"></div>
+        <div class="reasoning" id="gap-reasoning">—</div>
+      </div>
+
+      <!-- Monte Carlo -->
+      <div class="card specialist">
+        <div class="card-header">
+          <span class="card-title">Monte Carlo</span>
+          <span class="card-conf">Conf<strong id="mc-conf-val">—</strong></span>
+        </div>
+        <div class="mc-bars">
+          <div class="mc-bar">
+            <span class="mc-bar-label">Box</span>
+            <div class="mc-bar-track"><div class="mc-bar-fill box" id="mc-box-fill"></div></div>
+            <span class="mc-bar-val" id="mc-box-pos">—</span>
+          </div>
+          <div class="mc-bar">
+            <span class="mc-bar-label">Stay</span>
+            <div class="mc-bar-track"><div class="mc-bar-fill stay" id="mc-stay-fill"></div></div>
+            <span class="mc-bar-val" id="mc-stay-pos">—</span>
+          </div>
+        </div>
+        <div class="metric-row" style="margin-top: 8px;">
+          <div class="metric">
+            <span class="metric-label">Podium Δ</span>
+            <span class="metric-value" style="font-size: 16px;" id="mc-podium-delta">—</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Sims</span>
+            <span class="metric-value" style="font-size: 16px;" id="mc-sims">—</span>
+          </div>
+        </div>
+        <div class="reasoning" id="mc-reasoning">—</div>
+      </div>
+
+      <!-- Safety Car Oracle -->
+      <div class="card specialist">
+        <div class="card-header">
+          <span class="card-title">Safety Car Oracle</span>
+          <span class="card-conf">Conf<strong id="sc-conf-val">—</strong></span>
+        </div>
+        <div class="metric-row">
+          <div class="metric">
+            <span class="metric-label">Historical</span>
+            <span class="metric-value" style="font-size: 16px; color: var(--text-secondary);" id="sc-historical">—</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Adjusted</span>
+            <span class="metric-value warn" style="font-size: 20px;" id="sc-adjusted">—</span>
+          </div>
+        </div>
+        <div class="gauge">
+          <div class="gauge-bar">
+            <div class="gauge-fill" id="sc-gauge-fill"></div>
+            <span class="gauge-marker" id="sc-gauge-marker"></span>
+          </div>
+        </div>
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--warn); letter-spacing: 1.5px; margin: 6px 0; font-weight: 500; text-transform: uppercase;" id="sc-direction">Direction · —</div>
+        <div class="reasoning" id="sc-reasoning">—</div>
+      </div>
+
+      <!-- Weather Watcher -->
+      <div class="card specialist">
+        <div class="card-header">
+          <span class="card-title">Weather Watcher</span>
+          <span class="card-conf">Conf<strong id="weather-conf-val">—</strong></span>
+        </div>
+        <div class="weather-strip">
+          <div class="weather-row">
+            <span class="lbl">Condition</span>
+            <span class="val" id="weather-condition">—</span>
+          </div>
+          <div class="weather-row">
+            <span class="lbl">Optimal</span>
+            <span class="val" id="weather-optimal">—</span>
+          </div>
+          <div class="weather-row">
+            <span class="lbl">Urgency</span>
+            <span class="val" id="weather-urgency">—</span>
+          </div>
+        </div>
+        <div class="reasoning" id="weather-reasoning">—</div>
+      </div>
+
+      <!-- Rival Modeler (span 2) -->
+      <div class="card specialist rival-panel">
+        <div class="card-header">
+          <span class="card-title">Rival Modeler · Predictive</span>
+          <span class="card-conf">Conf<strong id="rivals-conf-val">—</strong></span>
+        </div>
+
+        <div class="rival-primary">
+          <span class="lbl">Primary threat</span>
+          <span class="val" id="rivals-primary">—</span>
+        </div>
+
+        <div class="rival-table" id="rivals-table">
+          <div class="rival-table-head">
+            <span>Driver</span>
+            <span>Compound</span>
+            <span>Stint</span>
+            <span>Pit lap</span>
+            <span>Window</span>
+          </div>
+        </div>
+
+        <div class="reasoning" id="rivals-reasoning">—</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="timeline">
+    <div class="card-header" style="margin-bottom: 0; padding-bottom: 0; border: none;">
+      <span class="card-title">Decision history</span>
+      <span class="card-conf" id="timeline-count">—</span>
+    </div>
+    <div class="timeline-track" id="timeline-track">
+      <div class="waiting">Waiting for first decision</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const POLL_INTERVAL_MS = 2000;
+
+const CALL_COLORS = {
+  'BOX_THIS_LAP':    '#d4a13a',
+  'BOX_NEXT_LAP':    '#d4a13a',
+  'EXTEND':          '#6797b8',
+  'STAY_OUT':        '#4caf6a',
+  'PIT_WINDOW_OPEN': '#8474b0',
+  'MONITOR':         '#8b929d',
+};
+
+const CALL_CLASSES = {
+  'BOX_THIS_LAP':    ['box',     'box-text'],
+  'BOX_NEXT_LAP':    ['box',     'box-text'],
+  'EXTEND':          ['extend',  'extend-text'],
+  'STAY_OUT':        ['stay',    'stay-text'],
+  'PIT_WINDOW_OPEN': ['window',  'window-text'],
+  'MONITOR':         ['monitor', 'monitor-text'],
+};
+
+const COMPOUND_COLORS = {
+  'S': '#d44a5a',
+  'M': '#d4a13a',
+  'H': '#d8dde4',
+  'I': '#4caf6a',
+  'W': '#6797b8',
+};
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+function setText(id, v) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = v == null ? '—' : v;
+}
+function setHTML(id, v) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = v;
+}
+function setStyle(id, prop, val) {
+  const el = document.getElementById(id);
+  if (el) el.style[prop] = val;
+}
+
+async function fetchState() {
+  try {
+    const r = await fetch('/api/state', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    return await r.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+function renderRace(race) {
+  if (!race) return;
+  setText('race-event', race.event);
+  setText('race-lap', `${race.lap} / ${race.lap_total}`);
+  setText('race-driver', race.driver);
+  setText('race-position', race.position);
+}
+
+function renderDecision(rec) {
+  if (!rec) return;
+  const d = rec.decision;
+  const color = CALL_COLORS[d.call] || '#d4a13a';
+
+  setText('decision-call', d.call);
+  setStyle('decision-call', 'color', color);
+  setStyle('decision-card', 'borderTopColor', color);
+  setStyle('decision-conf-fill', 'background', color);
+
+  setText('decision-cycle', `L${rec.lap}`);
+  setText('decision-trigger', `Trigger · ${(d.trigger || 'scheduled')} · Lap ${rec.lap}`);
+  setStyle('decision-conf-fill', 'width', `${(d.confidence || 0) * 100}%`);
+  setText('decision-conf-val', (d.confidence || 0).toFixed(2));
+  setText('decision-primary', d.primary_reason);
+
+  setHTML('decision-supporting',
+    (d.supporting_factors || []).map(f => `<div class="bullet">${escapeHtml(f)}</div>`).join(''));
+  setHTML('decision-risks',
+    (d.risks || []).map(r => `<div class="bullet">${escapeHtml(r)}</div>`).join(''));
+}
+
+function extractCompound(reasoning) {
+  if (!reasoning) return '—';
+  const r = reasoning.toUpperCase();
+  if (r.includes('WET')) return 'W';
+  if (r.includes('INTER')) return 'I';
+  if (r.includes('SOFT')) return 'S';
+  if (r.includes('MEDIUM')) return 'M';
+  if (r.includes('HARD')) return 'H';
+  return '—';
+}
+function compoundColor(c) { return COMPOUND_COLORS[c] || '#5b6271'; }
+function compoundName(c) {
+  return ({S:'Soft', M:'Medium', H:'Hard', I:'Inter', W:'Wet'})[c] || '—';
+}
+
+function renderTyre(tyre, currentLap) {
+  if (!tyre) return;
+
+  let tyreColor;
+  if (tyre.has_sufficient_data === false) {
+    setText('tyre-cliff', '—');
+    setText('tyre-status', 'No data');
+    setText('tyre-laps-to-cliff', '—');
+    setStyle('tyre-status', 'color', 'var(--text-muted)');
+    setStyle('tyre-cliff', 'color', 'var(--text-muted)');
+    setStyle('tyre-laps-to-cliff', 'color', 'var(--text-muted)');
+    tyreColor = '#5b6271';
+  } else {
+    setText('tyre-cliff', `L${tyre.cliff_lap}`);
+    setStyle('tyre-cliff', 'color', 'var(--warn)');
+    setText('tyre-status', 'Tracking');
+    setStyle('tyre-status', 'color', 'var(--ok)');
+
+    if (currentLap != null) {
+      const lapsToCliff = tyre.cliff_lap - currentLap;
+      setText('tyre-laps-to-cliff', lapsToCliff <= 0 ? 'At cliff' : `${lapsToCliff}`);
+      tyreColor = lapsToCliff <= 1 ? '#d44a5a' :
+                  lapsToCliff <= 5 ? '#d4a13a' : '#4caf6a';
+      setStyle('tyre-laps-to-cliff', 'color', tyreColor);
+    } else {
+      tyreColor = '#4caf6a';
+    }
+  }
+
+  setText('tyre-conf-val', tyre.confidence.toFixed(2));
+  setText('tyre-reasoning', tyre.reasoning);
+
+  document.querySelectorAll('.car-tyre-shape').forEach(el => {
+    el.setAttribute('stroke', tyreColor);
+  });
+
+  const compound = extractCompound(tyre.reasoning);
+  const cColor = compoundColor(compound);
+  setText('tyre-compound', compoundName(compound));
+  setStyle('tyre-compound', 'color', cColor);
+  const badge = document.getElementById('compound-badge');
+  const letter = document.getElementById('compound-letter');
+  if (badge) badge.setAttribute('stroke', cColor);
+  if (letter) {
+    letter.textContent = compound;
+    letter.setAttribute('fill', cColor);
+  }
+}
+
+function renderGap(gap) {
+  if (!gap) return;
+  setText('gap-undercut', (gap.undercut_threat || '—').toUpperCase());
+  setText('gap-overcut', (gap.overcut_opportunity || '—').toUpperCase());
+  setText('gap-conf-val', gap.confidence.toFixed(2));
+  setText('gap-reasoning', gap.reasoning);
+
+  const u = (gap.undercut_threat || '').toLowerCase();
+  setStyle('gap-undercut', 'color',
+    u === 'high' ? 'var(--crit)' : u === 'medium' ? 'var(--warn)' : 'var(--text-secondary)');
+  const o = (gap.overcut_opportunity || '').toLowerCase();
+  setStyle('gap-overcut', 'color',
+    o === 'high' ? 'var(--ok)' : o === 'medium' ? 'var(--warn)' : 'var(--text-secondary)');
+
+  const rivals = (gap.closest_rivals || []).slice(0, 3);
+  setHTML('gap-rivals', rivals.map(r => {
+    const absGap = Math.abs(r.gap_seconds);
+    const gapColor = absGap < 5 ? 'var(--crit)' : absGap < 10 ? 'var(--warn)' : 'var(--ok)';
+    const sign = r.gap_seconds > 0 ? '+' : '';
+    return `<div class="rival-row">
+      <span class="rival-code">${escapeHtml(r.driver_code)}</span>
+      <span style="color: ${gapColor};">${sign}${r.gap_seconds.toFixed(1)}s</span>
+      <span class="rival-threat">${escapeHtml((r.relationship || '').replace(/_/g, ' '))}</span>
+    </div>`;
+  }).join(''));
+}
+
+function renderMC(mc) {
+  if (!mc) return;
+  const boxPos = mc.box_now.expected_position;
+  const stayPos = mc.stay_out.expected_position;
+  setText('mc-box-pos', `P${boxPos.toFixed(1)}`);
+  setText('mc-stay-pos', `P${stayPos.toFixed(1)}`);
+
+  const widthFromPos = p => Math.max(20, 100 - (p - 1) * 8);
+  setStyle('mc-box-fill', 'width', `${widthFromPos(boxPos)}%`);
+  setStyle('mc-stay-fill', 'width', `${widthFromPos(stayPos)}%`);
+
+  const delta = (mc.box_now.p_podium - mc.stay_out.p_podium) * 100;
+  setText('mc-podium-delta', `${delta >= 0 ? '+' : ''}${delta.toFixed(0)}%`);
+  setStyle('mc-podium-delta', 'color',
+    Math.abs(delta) >= 10 ? 'var(--ok)' : 'var(--text-secondary)');
+
+  setText('mc-sims', mc.simulations_run);
+  setText('mc-conf-val', mc.confidence.toFixed(2));
+  setText('mc-reasoning', mc.interpretation);
+}
+
+function renderSC(sc) {
+  if (!sc) return;
+  setText('sc-historical', sc.historical_probability.toFixed(2));
+  setText('sc-adjusted', sc.adjusted_probability.toFixed(2));
+  setStyle('sc-gauge-fill', 'width', `${sc.adjusted_probability * 100}%`);
+  setStyle('sc-gauge-marker', 'left', `${sc.historical_probability * 100}%`);
+  setText('sc-direction', `Direction · ${(sc.direction || '—').toUpperCase()}`);
+
+  const dirColor = sc.direction === 'elevated' ? 'var(--warn)' :
+                   sc.direction === 'depressed' ? 'var(--ok)' : 'var(--text-primary)';
+  setStyle('sc-direction', 'color', dirColor);
+  setStyle('sc-adjusted', 'color', dirColor);
+  setStyle('sc-gauge-fill', 'background', dirColor);
+
+  setText('sc-conf-val', sc.confidence.toFixed(2));
+  setText('sc-reasoning', sc.reasoning);
+}
+
+function renderWeather(w) {
+  if (!w) return;
+  setText('weather-condition', (w.current_condition || '—').toUpperCase());
+  setText('weather-optimal', (w.optimal_compound || '—').toUpperCase());
+  setText('weather-urgency', (w.pivot_urgency || '—').toUpperCase());
+  setText('weather-conf-val', w.confidence.toFixed(2));
+  setText('weather-reasoning', w.reasoning);
+
+  const u = (w.pivot_urgency || '').toLowerCase();
+  setStyle('weather-urgency', 'color',
+    u === 'immediate' ? 'var(--crit)' :
+    u === 'soon' ? 'var(--warn)' :
+    'var(--text-secondary)');
+}
+
+function renderRivals(rivals) {
+  const table = document.getElementById('rivals-table');
+  if (!rivals) {
+    setText('rivals-primary', '—');
+    setText('rivals-conf-val', '—');
+    setText('rivals-reasoning', 'Waiting for Rival Modeler output');
+    if (table) {
+      table.innerHTML = `<div class="rival-table-head">
+        <span>Driver</span><span>Compound</span><span>Stint</span><span>Pit lap</span><span>Window</span>
+      </div>`;
+    }
+    return;
+  }
+
+  setText('rivals-primary', rivals.primary_threat_driver || '—');
+  setText('rivals-conf-val', (rivals.confidence || 0).toFixed(2));
+  setText('rivals-reasoning', rivals.reasoning);
+
+  const rows = (rivals.rivals || []).map(r => {
+    const threatLower = (r.threat_window || '').toLowerCase();
+    const threatClass = threatLower === 'now' ? 'threat-now' :
+                        threatLower === 'soon' ? 'threat-soon' : 'threat-later';
+    return `<div class="rival-data-row">
+      <span style="font-weight: 600;">${escapeHtml(r.driver_code)}</span>
+      <span>${escapeHtml(r.current_compound || '—')}</span>
+      <span>${r.current_stint_age != null ? r.current_stint_age + 'L' : '—'}</span>
+      <span>${r.predicted_pit_lap != null ? 'L' + r.predicted_pit_lap : '—'}</span>
+      <span class="${threatClass}">${escapeHtml((r.threat_window || '—').toUpperCase())}</span>
+    </div>`;
+  }).join('');
+
+  if (table) {
+    table.innerHTML = `<div class="rival-table-head">
+      <span>Driver</span><span>Compound</span><span>Stint</span><span>Pit lap</span><span>Window</span>
+    </div>${rows}`;
+  }
+}
+
+function renderTimeline(history) {
+  if (!history || history.length === 0) {
+    setHTML('timeline-track', '<div class="waiting">Waiting for first decision</div>');
+    setText('timeline-count', '0 cycles');
+    return;
+  }
+
+  const visible = history.slice(-8);
+  const currentIdx = visible.length - 1;
+
+  setText('timeline-count',
+    `${history.length} cycle${history.length === 1 ? '' : 's'} · L${history[0].lap}-L${history[history.length-1].lap}`);
+
+  setHTML('timeline-track', visible.map((item, idx) => {
+    const [cls, txtCls] = CALL_CLASSES[item.call] || ['monitor', 'monitor-text'];
+    const isCurrent = idx === currentIdx;
+    const reasonText = (item.primary_reason || '').slice(0, 60);
+    const trunc = (item.primary_reason || '').length > 60 ? '…' : '';
+    return `
+      <div class="timeline-item ${cls}${isCurrent ? ' current' : ''}">
+        <div class="timeline-lap">L${item.lap} · ${escapeHtml((item.trigger || 'sched').toUpperCase())}</div>
+        <div class="timeline-call ${txtCls}">${escapeHtml(item.call)}</div>
+        <div class="timeline-conf">Conf ${item.confidence.toFixed(2)}</div>
+        <div class="timeline-reason">${escapeHtml(reasonText)}${trunc}</div>
+      </div>`;
+  }).join(''));
+}
+
+async function tick() {
+  const state = await fetchState();
+  if (!state) {
+    setStyle('conn-indicator', 'background', 'var(--crit)');
+    setText('conn-text', 'Offline');
+    return;
+  }
+  setStyle('conn-indicator', 'background', 'var(--ok)');
+  setText('conn-text', 'Live');
+
+  renderRace(state.race);
+  if (state.current) {
+    renderDecision(state.current);
+    const sa = state.current.subagents || {};
+    renderTyre(sa.tyre, state.current.lap);
+    renderGap(sa.gap);
+    renderMC(sa.monte_carlo);
+    renderSC(sa.safety_car);
+    renderWeather(sa.weather);
+    renderRivals(sa.rivals);
+  }
+  renderTimeline(state.history);
+}
+
+tick();
+setInterval(tick, POLL_INTERVAL_MS);
+</script>
+
+</body>
+</html>

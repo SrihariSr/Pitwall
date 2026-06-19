@@ -244,5 +244,83 @@ class SafetyCarAssessment(BaseModel):
     )
     confidence: float = Field(
         description="0-1 confidence in the assessment. Lower when historical sample size is small or context is ambiguous.",
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0
+    )
+
+class WeatherAssessment(BaseModel):
+    """
+    The Weather Watcher's verdict on current conditions and optimal compound.
+
+    Reports what the track is doing now and what compound it calls for.
+    Does not recommend pit stops, that's the Orchestrator's job.
+    """
+
+    current_condition: str = Field(
+        description=(
+            "The current weather/track condition. One of: 'dry', 'damp', "
+            "'light_wet', 'heavy_wet', 'drying' (rain stopped, track clearing), "
+            "or 'wetting' (rain just started, track still mostly dry)."
+        )
+    )
+    optimal_compound: str = Field(
+        description="The optimal tyre compound family for current conditions: 'slicks', 'inters', or 'wets'."
+    )
+    pivot_urgency: str = Field(
+        description=(
+            "How urgently a compound change may be needed. One of: "
+            "'immediate' (conditions warrant a pivot now), "
+            "'soon' (pivot likely within 3-5 laps), "
+            "'stable' (no pivot expected within the lookahead)."
+        )
+    )
+    reasoning: str = Field(
+        description="One sentence justifying the assessment, citing specific weather trends or sample data."
+    )
+    confidence: float = Field(
+        description="0-1 confidence in the assessment. Lower during transitional or volatile conditions.",
+        ge=0.0,
+        le=1.0
+    )
+
+class RivalPrediction(BaseModel):
+    """Prediction for a single rival's strategic state."""
+
+    driver_code: str = Field(description="3-letter driver code, e.g. 'SAI'")
+    current_compound: str = Field(
+        description="Current tyre compound: 'SOFT', 'MEDIUM', 'HARD', 'INTER', 'WET', or 'UNKNOWN'."
+    )
+    current_stint_age: int = Field(
+        description="Number of laps completed on the current set of tyres."
+    )
+    predicted_pit_lap: int = Field(
+        description="The lap on which this rival is most likely to make their next pit stop."
+    )
+    threat_window: str = Field(
+        description=(
+            "When their next stop is expected. One of: 'now' (within 3 laps), "
+            "'soon' (3-8 laps), 'later' (8+ laps)."
+        )
+    )
+
+
+class RivalAssessment(BaseModel):
+    """The Rival Modeler's view of opposing strategies in the immediate window."""
+
+    rivals: list[RivalPrediction] = Field(
+        description="Predictions for the closest rivals, ordered by strategic threat."
+    )
+    primary_threat_driver: str = Field(
+        description=(
+            "Driver code of the rival posing the biggest strategic threat: "
+            "the one whose move would most disrupt our race position."
+        )
+    )
+    reasoning: str = Field(
+        description="One sentence justifying the primary threat assessment with specific evidence."
+    )
+    confidence: float = Field(
+        description="0-1 confidence. Lower when stint data is sparse or conditions transitional.",
+        ge=0.0,
+        le=1.0
     )
