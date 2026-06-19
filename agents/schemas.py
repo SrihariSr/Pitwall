@@ -211,3 +211,38 @@ class PitDecision(BaseModel):
             "'rival_pit', 'manual'. Useful for post-race auditing."
         )
     )
+
+class SafetyCarAssessment(BaseModel):
+    """
+    The Safety Car Oracle's verdict on SC/VSC probability in the upcoming window.
+
+    Combines historical base rates with current race context to produce an
+    adjusted estimate. Does not recommend strategy.
+    """
+
+    lap_window_from: int = Field(description="Start of the lap window assessed (typically current_lap + 1)")
+    lap_window_to: int = Field(description="End of the lap window assessed")
+    historical_probability: float = Field(
+        description="Combined SC+VSC probability from historical races at this circuit and window",
+        ge=0.0,
+        le=1.0
+    )
+    adjusted_probability: float = Field(
+        description="Probability adjusted for current race context (track status, weather)",
+        ge=0.0,
+        le=1.0
+    )
+    direction: str = Field(
+        description=(
+            "How current context shifts probability vs the historical baseline: "
+            "'elevated' (>=1.3x baseline), 'normal' (within ~20% of baseline), "
+            "'depressed' (<=0.7x baseline)."
+        )
+    )
+    reasoning: str = Field(
+        description="One sentence justifying the adjustment, citing specific signals from current race state."
+    )
+    confidence: float = Field(
+        description="0-1 confidence in the assessment. Lower when historical sample size is small or context is ambiguous.",
+        ge=0.0, le=1.0,
+    )

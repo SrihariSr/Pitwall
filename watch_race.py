@@ -97,7 +97,7 @@ async def main():
         year=2022,
         event="Monaco",
         session_type="R",
-        speed=2.0,
+        speed=1.0,
         start_lap=15,
         end_lap=25,
     )

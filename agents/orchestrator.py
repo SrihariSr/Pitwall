@@ -10,7 +10,6 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
 from mcp_server.live_state import get_active_state
 from mcp_server.server import get_current_race_state
 from llm.client import LLMClient
@@ -19,10 +18,12 @@ from agents.schemas import (
     TyreAssessment,
     GapAssessment,
     MonteCarloAssessment,
+    SafetyCarAssessment
 )
 from agents.tyre_strategist import assess_tyres
 from agents.gap_analyst import assess_gaps
 from agents.monte_carlo import assess_monte_carlo
+from agents.sc_oracle import assess_safety_car
 
 ORCHESTRATOR_MODEL = os.getenv("LLM_MODEL_ORCHESTRATOR", "gemini-2.5-flash")
 
@@ -31,21 +32,23 @@ _DECISIONS_PATH = Path("decisions/decisions.jsonl")
 SYSTEM_PROMPT = """
 You are the Chief Strategist on an F1 team's pit wall.
 
-Your job: take the structured outputs of specialist engineers (Tyre Strategist, Gap Analyst, Monte Carlo simulator) and decide the team's strategic call. You do not have access to raw data, only the specialists' assessments. Trust them where they're confident, downweight them where they're not.
+Your job: take the structured outputs of specialist engineers (Tyre Strategist, Gap Analyst, Monte Carlo simulator, Safety Car Oracle) and decide the team's strategic call. You do not have access to raw data, only the specialists' assessments. Trust them where they're confident, downweight them where they're not.
 
 The call vocabulary:
 - BOX_THIS_LAP: pit on the lap that's just ending. Used when the decision is unambiguous and we need to act now.
 - BOX_NEXT_LAP: pit on the next lap. Used when we want a lap of preparation, or when the decision is firm but conditions allow a moment of delay.
 - STAY_OUT: explicit decision not to pit. Used when there's a real case for pitting but we judge it wrong.
-- EXTEND: commit to a longer stint than baseline. Used when an overcut opportunity outweighs tyre cost.
+- EXTEND: commit to a longer stint than baseline. Used when an overcut opportunity outweighs tyre cost, OR when SC probability is elevated and waiting for a cheap stop is worth the tyre risk.
 - PIT_WINDOW_OPEN: pitting now would be defensible but not the only option. Used when the case is balanced.
 - MONITOR: no actionable change since the last cycle. Used when subagent outputs are stable and uneventful.
 
 How to weigh inputs:
-- If Tyre Strategist says insufficient_data, ignore its cliff_lap and rely on Gap + Monte Carlo
+- If Tyre Strategist says insufficient_data, ignore its cliff_lap and rely on Gap, Monte Carlo, and Safety Car Oracle
 - If Monte Carlo's box_now and stay_out distributions differ by >10pp on podium probability, that's a meaningful signal
 - If Gap Analyst flags a high undercut threat AND tyres are within 3 laps of cliff, that converges toward BOX
-- If track is under SC or VSC, the pit-stop loss is roughly halved — favours pitting in borderline cases
+- If Safety Car Oracle reports adjusted_probability > 0.3 AND tyres are healthy (cliff >5 laps out), consider EXTEND or MONITOR - wait for the potential cheap stop
+- If Safety Car Oracle direction is "elevated" alongside an undercut threat, the calculus leans earlier — a bunched field after a SC reshuffles everything
+- If track is under SC or VSC, the pit-stop loss is roughly halved: favours pitting in borderline cases
 - If you're the leader with no immediate threat and healthy tyres, default to MONITOR
 
 Biases:
@@ -63,7 +66,8 @@ def _build_fusion_prompt(
     tyre: TyreAssessment,
     gap: GapAssessment,
     mc: MonteCarloAssessment,
-    trigger: str,
+    sc: SafetyCarAssessment,
+    trigger: str
 ) -> str:
     """
     Compose the variable portion of the orchestrator prompt.
@@ -102,6 +106,15 @@ def _build_fusion_prompt(
         f"confidence: {mc.confidence:.2f}"
     )
 
+    sc_block = (
+        f"window: L{sc.lap_window_from}-L{sc.lap_window_to}\n"
+        f"historical_probability: {sc.historical_probability:.2f}\n"
+        f"adjusted_probability: {sc.adjusted_probability:.2f}\n"
+        f"direction: {sc.direction}\n"
+        f"confidence: {sc.confidence:.2f}\n"
+        f"reasoning: {sc.reasoning}"
+    )
+
     return f"""
 Focal driver: {driver_code} at lap {current_lap}.
 Track status: {race.track_status}. Weather: {"raining" if race.is_raining else "dry"}, {race.track_temp_celsius}°C track temp.
@@ -116,6 +129,9 @@ Trigger that woke the orchestrator: {trigger}.
 ----------- MONTE CARLO -----------
 {mc_block}
 
+----------- SAFETY CAR ORACLE -----------
+{sc_block}
+
 Fuse these inputs into a PitDecision. Pick one of the six call categories, name your primary reason, list supporting factors, and name 1-3 risks."""
 
 def _log_decision(
@@ -125,6 +141,7 @@ def _log_decision(
     tyre: TyreAssessment,
     gap: GapAssessment,
     mc: MonteCarloAssessment,
+    sc: SafetyCarAssessment
 ) -> None:
     """
     Append one line to decisions.jsonl for post-race audit.
@@ -144,6 +161,7 @@ def _log_decision(
             "tyre": tyre.model_dump(),
             "gap": gap.model_dump(),
             "monte_carlo": mc.model_dump(),
+            "safety_car": sc.model_dump()
         },
     }
 
@@ -157,7 +175,7 @@ async def decide(
     event: str,
     session_type: str,
     trigger: str = "scheduled",
-    model: str = ORCHESTRATOR_MODEL,
+    model: str = ORCHESTRATOR_MODEL
 ) -> PitDecision:
     """
     Run one ochestrator cycle: consult subagents, combine and return a decision.
@@ -170,10 +188,11 @@ async def decide(
     race = get_current_race_state()
 
     # Consulting subagents in parallel
-    tyre, gap, monte_carlo = await asyncio.gather(
+    tyre, gap, monte_carlo, safety_car = await asyncio.gather(
         assess_tyres(client, driver_code, year, event, session_type),
         assess_gaps(client, driver_code, year, event, session_type),
-        assess_monte_carlo(client, driver_code, year, event, session_type),       
+        assess_monte_carlo(client, driver_code, year, event, session_type),
+        assess_safety_car(client, year, event, session_type)  
     )
 
     user_prompt = _build_fusion_prompt(
@@ -183,6 +202,7 @@ async def decide(
         tyre,
         gap,
         monte_carlo,
+        safety_car,
         trigger
         )
     
@@ -196,6 +216,6 @@ async def decide(
 
     decision.trigger = trigger
 
-    _log_decision(driver_code, current_lap, decision, tyre, gap, monte_carlo)
+    _log_decision(driver_code, current_lap, decision, tyre, gap, monte_carlo, safety_car)
 
     return decision
