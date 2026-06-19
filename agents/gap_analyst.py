@@ -9,7 +9,9 @@ from mcp_server.live_state import get_active_state
 from mcp_server.server import get_gaps_to_rivals, get_current_race_state
 from llm.client import LLMClient
 from agents.schemas import GapAssessment
+import os
 
+DEFAULT_MODEL = os.getenv("LLM_MODEL_SUBAGENT", "gemini-2.5-flash-lite")
 
 SYSTEM_PROMPT = """
 You are the Gap Analyst on an F1 team's pit wall.
@@ -53,7 +55,7 @@ async def assess_gaps(
     year: int,
     event: str,
     session_type: str,
-    model: str = "gemini-2.5-flash-lite",
+    model: str = DEFAULT_MODEL,
 ) -> GapAssessment:
     """
     Run the Gap Analyst on the focal driver.

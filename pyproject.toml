@@ -8,5 +8,6 @@ dependencies = [
     "fastf1>=3.8.3",
     "google-genai>=1.75.0",
     "mcp[cli]>=1.27.0",
+    "openai>=2.43.0",
     "python-dotenv>=1.2.2",
 ]

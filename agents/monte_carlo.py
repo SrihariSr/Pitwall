@@ -25,6 +25,9 @@ from mcp_server.server import (
 )
 from llm.client import LLMClient
 from agents.schemas import MonteCarloAssessment, StrategyOutcome
+import os
+
+DEFAULT_MODEL = os.getenv("LLM_MODEL_SUBAGENT", "gemini-2.5-flash-lite")
 
 # Degradation rates in seconds of lap-time added per lap of stint age
 # Degradation rates are hard-coded approximations. Actual degradation rates vary by track and stint length
@@ -162,7 +165,7 @@ async def assess_monte_carlo(
     year: int,
     event: str,
     session_type: str,
-    model: str = "gemini-2.5-flash-lite",
+    model: str = DEFAULT_MODEL,
     new_compound: str = "MEDIUM",
 ) -> MonteCarloAssessment:
     """

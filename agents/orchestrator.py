@@ -7,6 +7,7 @@ Logs every decision to decisions.jsonl for post-race auditing.
 """
 import asyncio
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -22,6 +23,8 @@ from agents.schemas import (
 from agents.tyre_strategist import assess_tyres
 from agents.gap_analyst import assess_gaps
 from agents.monte_carlo import assess_monte_carlo
+
+ORCHESTRATOR_MODEL = os.getenv("LLM_MODEL_ORCHESTRATOR", "gemini-2.5-flash")
 
 _DECISIONS_PATH = Path("decisions/decisions.jsonl")
 
@@ -154,7 +157,7 @@ async def decide(
     event: str,
     session_type: str,
     trigger: str = "scheduled",
-    model: str = "gemini-2.5-flash-lite",
+    model: str = ORCHESTRATOR_MODEL,
 ) -> PitDecision:
     """
     Run one ochestrator cycle: consult subagents, combine and return a decision.
