@@ -6,7 +6,6 @@ threat. Where the Gap Analyst tells the team how rivals are positioned now,
 the Rival Modeler tells them what rivals are about to do. First predictive
 specialist in the ensemble.
 """
-from typing_extensions import runtime
 import os
 from mcp_server.live_state import get_active_state
 from mcp_server.server import get_current_race_state, get_tyre_stints, get_gaps_to_rivals
@@ -63,23 +62,24 @@ def _build_user_prompt(driver_code, current_lap, race, gaps, rival_stints) -> st
     """
     Compose the per-call part. Shows each rival's stint state and gap.
     """
-    closest = sorted(gaps.rivals, key=lambda r: abs(r.gap_seconds))[:3]
+    valid_rivals = [r for r in gaps.rivals if r.gap_seconds is not None]
+    closest = sorted(valid_rivals, key=lambda r: abs(r.gap_seconds))[:3]
 
     rival_blocks = []
     for rival in closest:
-        stints_obj = rival_stints.get(rival.driver_code)
+        stints_obj = rival_stints.get(rival.rival_driver_code)
         if stints_obj is None:
-            rival_blocks.append(f"{rival.driver_code} (gap: {rival.gap_seconds:+.2f}s): No stint data available.")
+            rival_blocks.append(f"{rival.rival_driver_code} (gap: {rival.gap_seconds:+.2f}s): No stint data available.")
             continue
-        
-        current_stint = next((s for s in stints_obj if s.is_ongoing), None)
+
+        current_stint = next((s for s in stints_obj.stints if s.is_ongoing), None)
         if current_stint is None:
-            rival_blocks.append(f"{rival.driver_code} (gap {rival.gap_seconds:+.2f}s): no ongoing stint detected.")
+            rival_blocks.append(f"{rival.rival_driver_code} (gap {rival.gap_seconds:+.2f}s): no ongoing stint detected.")
             continue
-        
+
         age = current_lap - current_stint.start_lap + 1
         rival_blocks.append(
-            f" {rival.driver_code} (gap {rival.gap_seconds:+.2f}s, {rival.relationship}): "
+            f" {rival.rival_driver_code} (gap {rival.gap_seconds:+.2f}s): "
             f"{current_stint.compound}, stint age {age} laps, started L{current_stint.start_lap}, "
             f"best lap {current_stint.best_lap_time_seconds:.3f}s"
         )
@@ -131,20 +131,21 @@ async def assess_rivals(
         current_lap=current_lap
     )
     
-    closest = sorted(gaps.rivals, key=lambda r: abs(r.gap_seconds))[:3]
+    valid_rivals = [r for r in gaps.rivals if r.gap_seconds is not None]
+    closest = sorted(valid_rivals, key=lambda r: abs(r.gap_seconds))[:3]
 
     rival_stints = {}
     for rival in closest:
         try:
-            rival_stints[rival.driver_code] = get_tyre_stints(
+            rival_stints[rival.rival_driver_code] = get_tyre_stints(
                 year=year,
                 event=event,
                 session_type=session_type,
-                driver_code=rival.driver_code,
+                driver_code=rival.rival_driver_code,
                 current_lap=current_lap
             )
         except Exception:
-            rival_stints[rival.driver_code] = None
+            rival_stints[rival.rival_driver_code] = None
     
     user_prompt = _build_user_prompt(driver_code, current_lap, race, gaps, rival_stints)
 

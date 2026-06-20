@@ -458,6 +458,69 @@ body {
   text-transform: uppercase;
   grid-column: 1 / -1;
 }
+
+/* ─── TEAM RADIO BANNER ────────────────────────────────── */
+.radio-banner {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--text-secondary);
+  transition: border-left-color 0.4s;
+}
+
+.radio-banner.critical { border-left-color: var(--crit); }
+.radio-banner.info     { border-left-color: var(--info); }
+.radio-banner.planning { border-left-color: var(--alt); }
+
+.radio-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 110px;
+}
+
+.radio-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.radio-urgency {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.radio-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.radio-call {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+}
+
+.radio-full {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  font-style: italic;
+}
 </style>
 </head>
 <body>
@@ -465,7 +528,7 @@ body {
 <div class="dash">
 
   <header class="header">
-    <div class="logo">PITWALL<span class="v"></span></div>
+    <div class="logo">PITWALL<span class="v">v0.5</span></div>
     <div class="race-info">
       <div><span class="lbl">Event</span><span class="val" id="race-event">—</span></div>
       <div><span class="lbl">Lap</span><span class="val" id="race-lap">—</span></div>
@@ -476,6 +539,18 @@ body {
       <span class="live-dot" id="conn-indicator"></span><span id="conn-text">Connecting</span>
     </div>
   </header>
+
+  <!-- Team Radio banner -->
+  <div class="radio-banner" id="radio-banner">
+    <div class="radio-meta">
+      <span class="radio-label">Team radio</span>
+      <span class="radio-urgency" id="radio-urgency">—</span>
+    </div>
+    <div class="radio-body">
+      <span class="radio-call" id="radio-call">Waiting for first transmission</span>
+      <span class="radio-full" id="radio-full">—</span>
+    </div>
+  </div>
 
   <div class="main">
 
@@ -946,6 +1021,23 @@ function renderWeather(w) {
     'var(--text-secondary)');
 }
 
+function renderRadio(radio) {
+  const banner = document.getElementById('radio-banner');
+  if (!radio) {
+    setText('radio-urgency', '—');
+    setText('radio-call', 'Waiting for first transmission');
+    setText('radio-full', '—');
+    if (banner) banner.className = 'radio-banner';
+    return;
+  }
+  setText('radio-urgency', (radio.urgency || '—').toUpperCase());
+  setText('radio-call', radio.primary_call || '—');
+  setText('radio-full', radio.full_message || '—');
+  if (banner) {
+    banner.className = 'radio-banner ' + (radio.urgency || '');
+  }
+}
+
 function renderRivals(rivals) {
   const table = document.getElementById('rivals-table');
   if (!rivals) {
@@ -1032,6 +1124,7 @@ async function tick() {
     renderSC(sa.safety_car);
     renderWeather(sa.weather);
     renderRivals(sa.rivals);
+    renderRadio(state.current.radio);
   }
   renderTimeline(state.history);
 }

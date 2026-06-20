@@ -16,7 +16,7 @@ from llm.client import LLMClient
 from agents.orchestrator import decide
 
 
-DECISION_CADENCE = 3   # consult every 3 laps unless a trigger fires
+DECISION_CADENCE = 3 # consult every 3 laps unless a trigger fires
 
 
 async def orchestrator_loop(
@@ -97,9 +97,9 @@ async def main():
         year=2022,
         event="Monaco",
         session_type="R",
-        speed=0.3,
-        start_lap=15,
-        end_lap=25,
+        speed=3.0,
+        start_lap=1,
+        end_lap=78,
     )
 
     await asyncio.sleep(3.0)

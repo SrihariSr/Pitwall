@@ -8,6 +8,7 @@ Logs every decision to decisions.jsonl for post-race auditing.
 import asyncio
 import json
 import os
+
 from datetime import datetime
 from pathlib import Path
 from mcp_server.live_state import get_active_state
@@ -20,14 +21,17 @@ from agents.schemas import (
     MonteCarloAssessment,
     SafetyCarAssessment,
     WeatherAssessment,
-    RivalAssessment
+    RivalAssessment,
+    RadioMessage
 )
+
 from agents.tyre_strategist import assess_tyres
 from agents.gap_analyst import assess_gaps
 from agents.monte_carlo import assess_monte_carlo
 from agents.sc_oracle import assess_safety_car
 from agents.weather_watcher import assess_weather
 from agents.rival_modeler import assess_rivals
+from agents.radio_narrator import narrate
 
 ORCHESTRATOR_MODEL = os.getenv("LLM_MODEL_ORCHESTRATOR", "gemini-2.5-flash")
 
@@ -180,7 +184,8 @@ def _log_decision(
     mc: MonteCarloAssessment,
     sc: SafetyCarAssessment,
     weather: WeatherAssessment,
-    rivals: RivalAssessment
+    rivals: RivalAssessment,
+    radio: RadioMessage
 ) -> None:
     """
     Append one line to decisions.jsonl for post-race audit.
@@ -202,8 +207,9 @@ def _log_decision(
             "monte_carlo": mc.model_dump(),
             "safety_car": sc.model_dump(),
             "weather": weather.model_dump(),
-            "rivals": rivals.model_dump()
+            "rivals": rivals.model_dump(),
         },
+        "radio": radio.model_dump()
     }
 
     with _DECISIONS_PATH.open("a") as f:
@@ -261,6 +267,8 @@ async def decide(
 
     decision.trigger = trigger
 
-    _log_decision(driver_code, current_lap, decision, tyre, gap, monte_carlo, safety_car, weather, rivals)
+    radio = await narrate(client, decision)
+
+    _log_decision(driver_code, current_lap, decision, tyre, gap, monte_carlo, safety_car, weather, rivals, radio)
 
     return decision

@@ -32,7 +32,8 @@ class TyreAssessment(BaseModel):
             "0.0-1.0 confidence in the cliff_lap estimate. Should be low "
             "(<0.4) when has_sufficient_data=False."
         ),
-        ge=0.0, le=1.0,
+        ge=0.0,
+        le=1.0
     )
     reasoning: str = Field(
         description="One sentence justifying the call, citing specific evidence from the lap data."
@@ -99,7 +100,7 @@ class GapAssessment(BaseModel):
             "in flux (recent pit stops shuffling order, SC just ended)."
         ),
         ge=0.0,
-        le=1.0,
+        le=1.0
     )
 
 class StrategyOutcome(BaseModel):
@@ -121,12 +122,12 @@ class StrategyOutcome(BaseModel):
     p_podium: float = Field(
         description="Probability of finishing P1-P3, 0-1",
         ge=0.0,
-        le=1.0,
+        le=1.0
     )
     p_points: float = Field(
         description="Probability of finishing P1-P10 (in the points), 0-1",
         ge=0.0,
-        le=1.0,
+        le=1.0
     )
 
 
@@ -154,7 +155,7 @@ class MonteCarloAssessment(BaseModel):
             "weather, anomalous SC density, novel circuit conditions)."
         ),
         ge=0.0,
-        le=1.0,
+        le=1.0
     )
 
 class PitDecision(BaseModel):
@@ -183,7 +184,7 @@ class PitDecision(BaseModel):
             "above 0.8 the data points clearly one way."
         ),
         ge=0.0,
-        le=1.0,
+        le=1.0
     )
     primary_reason: str = Field(
         description=(
@@ -324,3 +325,33 @@ class RivalAssessment(BaseModel):
         ge=0.0,
         le=1.0
     )
+
+class RadioMessage(BaseModel):
+    """
+    A race-engineer radio message generated from a PitDecision.
+
+    Different from the other subagent outputs: this is post-processing,
+    converting the Chief Strategist's structured decision into the language
+    a race engineer would actually use on team radio to the driver.
+    """
+
+    urgency: str = Field(
+        description=(
+            "Message urgency. One of: 'critical' (immediate driver action), "
+            "'info' (status update, no action change), "
+            "'planning' (heads-up about future events)."
+        )
+    )
+    primary_call: str = Field(
+        description=(
+            "Headline imperative, 2-8 words. E.g. 'Box this lap, box this lap', "
+            "'Stay out, stay out', 'Window opens next lap'."
+        )
+    )
+    full_message: str = Field(
+        description=(
+            "Complete radio message as a race engineer would deliver it. "
+            "1-3 short sentences, calm and concise, with the WHY included briefly."
+        )
+    )
+    
