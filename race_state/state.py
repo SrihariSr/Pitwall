@@ -29,7 +29,8 @@ class RaceState:
     """
     Current state of "what's going on in the race right now?"
     """
-    def __init__(self) -> None:
+    def __init__(self, total_laps: int | None = None) -> None:
+        self.total_laps = total_laps
         self._drivers: dict[str, DriverState] = {} # Per-driver snapshots keyed by their 3-letter code
         # Race wide fields
         self._current_lap: int = 0

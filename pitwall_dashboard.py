@@ -15,11 +15,11 @@ import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
+from race_config import DISPLAY_NAME, TOTAL_LAPS
 
 _DECISIONS_PATH = Path("decisions/decisions.jsonl")
 _HTML_PATH = Path(__file__).parent / "pitwall_dashboard.html"
 _PORT = 8765
-
 
 def _load_state() -> dict:
     """Read decisions.jsonl and return a dashboard-friendly snapshot.
@@ -62,9 +62,9 @@ def _load_state() -> dict:
 
     gap = current["subagents"]["gap"]
     race = {
-        "event": "Monaco GP · 2022",
+        "event": DISPLAY_NAME,
         "lap": current["lap"],
-        "lap_total": 78,
+        "lap_total": TOTAL_LAPS,
         "driver": current["driver"],
         "position": f"P{gap['focal_position']}",
     }

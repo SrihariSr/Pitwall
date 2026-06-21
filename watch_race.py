@@ -1,6 +1,4 @@
 """
-Watch Monaco 2022 with the full Orchestrator + subagents pipeline.
-
 The orchestrator wakes every 3 laps (or on trigger events) and produces
 a PitDecision by fusing Tyre Strategist, Gap Analyst, and Monte Carlo
 outputs. Each decision is logged to decisions/decisions.jsonl.
@@ -15,6 +13,8 @@ from mcp_server.server import get_current_race_state
 from llm.client import LLMClient
 from agents.orchestrator import decide
 
+from race_config import YEAR, EVENT, SESSION_TYPE, DRIVER_CODE, START_LAP, END_LAP, REPLAY_SPEED
+
 
 DECISION_CADENCE = 3 # consult every 3 laps unless a trigger fires
 
@@ -22,9 +22,9 @@ DECISION_CADENCE = 3 # consult every 3 laps unless a trigger fires
 async def orchestrator_loop(
     client: LLMClient,
     state: RaceState,
-    driver_code: str = "LEC",
-    year: int = 2022,
-    event: str = "Monaco",
+    driver_code: str = "PIA",
+    year: int = 2025,
+    event: str = "Qatar",
     session_type: str = "R",
 ):
     seen_laps = set()
@@ -87,25 +87,31 @@ async def main():
     await state.start(bus)
 
     agent_task = asyncio.create_task(
-        orchestrator_loop(client, state, driver_code="LEC")
+        orchestrator_loop(
+            client,
+            state,
+            driver_code=DRIVER_CODE,
+            year=YEAR,
+            event=EVENT,
+            session_type=SESSION_TYPE
+        )
     )
 
     await asyncio.sleep(0.1)
 
     await replay_session(
         bus,
-        year=2022,
-        event="Monaco",
-        session_type="R",
-        speed=3.0,
-        start_lap=1,
-        end_lap=78,
+        year=YEAR,
+        event=EVENT,
+        session_type=SESSION_TYPE,
+        speed=REPLAY_SPEED,
+        start_lap=START_LAP,
+        end_lap=END_LAP
     )
 
     await asyncio.sleep(3.0)
     agent_task.cancel()
     await state.stop()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
