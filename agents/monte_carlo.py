@@ -47,8 +47,8 @@ _TYRE_CLIFF_LAPS = {
 }
 _POST_CLIFF_MULTIPLIER = 3.0
 
-# Pit stop loss: mean and standard deviation in seconds.
 # Real pit loss varies with traffic, unsafe releases, slow stops.
+# pit loss ~ N(_PIT_LOSS_MEAN, _PIT_LOSS_STD^2)
 _PIT_LOSS_MEAN = 22.0
 _PIT_LOSS_STD = 1.5
 

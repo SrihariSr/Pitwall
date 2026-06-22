@@ -15,8 +15,10 @@ from agents.orchestrator import decide
 
 from race_config import YEAR, EVENT, SESSION_TYPE, DRIVER_CODE, START_LAP, END_LAP, REPLAY_SPEED
 
+import logging
+logging.getLogger("fastf1").setLevel(logging.WARNING)
 
-DECISION_CADENCE = 3 # consult every 3 laps unless a trigger fires
+DECISION_CADENCE = 2
 
 
 async def orchestrator_loop(

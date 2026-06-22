@@ -32,6 +32,7 @@ from agents.sc_oracle import assess_safety_car
 from agents.weather_watcher import assess_weather
 from agents.rival_modeler import assess_rivals
 from agents.radio_narrator import narrate
+from agents import decision_history
 
 ORCHESTRATOR_MODEL = os.getenv("LLM_MODEL_ORCHESTRATOR", "gemini-2.5-flash")
 
@@ -67,6 +68,14 @@ Biases:
 - Conservative on confidence. 0.9+ requires near-unanimous subagent agreement.
 - Always name your dominant reason. Vague reasoning is worse than wrong reasoning.
 - Always name 1-3 real risks. Every call has downside scenarios; pretending otherwise is dishonest.
+
+You have access to your own recent decisions in the RECENT DECISIONS section. Use this context when forming your call.
+
+- If your previous call was the same as the one you would make now, and the situation has not materially changed, maintaining that call is acceptable — say so explicitly in change_from_previous.
+- If your previous call was different (e.g. BOX last time, EXTEND now), explain the change. What shifted? SC cleared? Cliff passed? Undercut threat receded?
+- If you have made the same call three or more times in a row, take a moment to reassess. Either the situation genuinely warrants the repeated call (state this explicitly), or your model may be missing something — in which case lower your confidence rather than raise it.
+
+Always populate change_from_previous with one sentence. Use null only on the very first cycle when no history exists.
 
 Output: a single PitDecision.
 """
@@ -150,7 +159,7 @@ def _build_fusion_prompt(
     f"reasoning: {rivals.reasoning}"
     )
 
-    return f"""
+    return f""" {decision_history.format_for_prompt()}
 Focal driver: {driver_code} at lap {current_lap}.
 Track status: {race.track_status}. Weather: {"raining" if race.is_raining else "dry"}, {race.track_temp_celsius}°C track temp.
 Trigger that woke the orchestrator: {trigger}.
@@ -171,7 +180,7 @@ Trigger that woke the orchestrator: {trigger}.
 {weather_block}
 
 ----------- RIVAL MODELER -----------
-{weather_block}
+{rivals_block}
 
 Fuse these inputs into a PitDecision. Pick one of the six call categories, name your primary reason, list supporting factors, and name 1-3 risks."""
 
@@ -269,6 +278,8 @@ async def decide(
 
     radio = await narrate(client, decision)
 
+    decision_history.record(lap=current_lap, call=decision.call)
+    
     _log_decision(driver_code, current_lap, decision, tyre, gap, monte_carlo, safety_car, weather, rivals, radio)
 
     return decision

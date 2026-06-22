@@ -212,6 +212,15 @@ class PitDecision(BaseModel):
             "'rival_pit', 'manual'. Useful for post-race auditing."
         )
     )
+    change_from_previous: str | None = Field(
+    default=None,
+    description=(
+        "One sentence explaining how this decision relates to your most "
+        "recent previous decision. Use null only for the first cycle of "
+        "a race. Be explicit about whether you are maintaining a previous "
+        "call, pivoting, or repeating a recommendation that was not executed."
+    ),
+)
 
 class SafetyCarAssessment(BaseModel):
     """
