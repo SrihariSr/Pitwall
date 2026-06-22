@@ -1,7 +1,7 @@
 """
 Monte Carlo race-end simulator.
 
-Given current race state, the subagent runs 5000 simulations of the remaining race for
+Given current race state, the subagent runs 10000 simulations of the remaining race for
 each of two strategies (BOX_NOW vs STAY_OUT), tracking the focal driver's
 finishing position in each. Outputs a distribution over finishing positions
 per strategy.
